@@ -1,5 +1,9 @@
 # FinPilot: a proactive multi-agent financial copilot
 
+🎥 **Demo video (5½ min):** https://www.youtube.com/watch?v=Vrmu_8reTlE
+
+[![FinPilot demo video](https://img.youtube.com/vi/Vrmu_8reTlE/maxresdefault.jpg)](https://www.youtube.com/watch?v=Vrmu_8reTlE)
+
 **Agent Arena 2026, Track 02 (FinPilot).** FinPilot reads a user's bank transactions, categorises them, studies how the user spends, forecasts where their money is heading, simulates what-if decisions against that forecast, and gives specific recommendations. Every recommendation records the evidence that triggered it, and a verifier agent checks each one before the user sees it.
 
 All LLM calls go through **Mesh API** (`https://api.meshapi.ai/v1`, OpenAI-compatible) in [`finpilot/llm.py`](finpilot/llm.py). That file is the only place the LLM client is created.
