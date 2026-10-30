@@ -673,7 +673,7 @@ async function ask() {
   const q = $("q").value.trim(); if (!q) return;
   const box = document.createElement("div"); box.className = "answer"; box.innerHTML = `<div class="q">› ${esc(q)}</div><div class="muted">Coordinator is routing your question through Mesh…</div>`; $("answers").prepend(box); $("askbtn").disabled = true;
   try { const r = await post("/api/ask", {question: q});
-    box.innerHTML = `<div class="q">› ${esc(q)}</div>` + (r.simulation ? simBlock(r.simulation, esc(r.answer)) : `<p>${esc(r.answer)}</p>`) + `<div class="mono muted" style="font-size:11.5px;margin-top:6px">${r.intent === "what_if" ? "Coordinator → Simulator → Verdict" : "Coordinator → Q&A agent"} · run #${r.run_id}</div>`;
+    box.innerHTML = `<div class="q">› ${esc(q)}</div>` + (r.simulation ? simBlock(r.simulation, esc(r.answer)) : `<p>${esc(r.answer)}</p>`) + `<div class="mono muted" style="font-size:11.5px;margin-top:6px">${r.intent === "what_if" ? "Coordinator → Simulator → Verdict" : "Coordinator → Q&A agent"} · run #${r.run_id}${r.answer_source === "llm" ? " · ✓ every number checked against the simulation" : r.answer_source === "template" ? " · LLM wording failed the number check, so the computed sentence is shown" : ""}</div>`;
     if (r.simulation) drawSim(box.querySelector(".chart"), r.simulation);
   } catch (e) { box.innerHTML = `<div class="q">› ${esc(q)}</div><p style="color:var(--red)">${esc(e.message)}</p><p class="muted">“Simulate directly” above works without the LLM.</p>`; }
   $("askbtn").disabled = false;

@@ -205,3 +205,14 @@ def test_verifier_rejects_implausibly_small_saving(labelled_db, monkeypatch):
            "monthly_impact": 3, "evidence_ids": [top["id"]], "reason": "delivery adds up"}
     ok, bad = advisor.verify([rec], ev)
     assert not ok and "realistic monthly saving" in bad[0]["verifier_note"]
+
+
+def test_garbled_llm_explanation_is_replaced_by_computed_numbers(labelled_db, monkeypatch):
+    """The model once wrote '\\u000a920,000' for '₹20,000'. Numbers the simulator didn't compute must never reach the user."""
+    fc = forecaster.project(db.all_transactions(), opening_balance=50000)
+    sim = forecaster.simulate(fc, {"type": "purchase", "amount": 20000, "month_offset": 1})
+    garbled = f"Yes, you can afford the 920,000 purchase. Lowest balance {sim['min_balance_pessimistic']:.2f}."
+    assert coordinator.unsupported_numbers(garbled, sim) == ["920,000"]
+    good = f"Yes, the INR 20,000 purchase is fine; lowest balance INR {sim['min_balance']:,.0f}."
+    assert coordinator.unsupported_numbers(good, sim) == []
+    assert "INR 20,000" in coordinator.simulation_sentence(sim)

@@ -70,7 +70,8 @@ def _forecast_summary(fc: dict, gs: list[dict], run_id: int) -> tuple[str, str]:
         try:
             out = llm.chat_json(
                 "You are the Forecaster agent of FinPilot. Rewrite these computed facts as ONE friendly sentence "
-                "(max 30 words) for the user, keeping every number exactly. Respond as JSON {\"summary\": \"...\"}",
+                "(max 30 words) for the user, keeping every number exactly; write amounts as plain ASCII like INR 12,345 "
+                "(never the rupee symbol or unicode escapes). Respond as JSON {\"summary\": \"...\"}",
                 json.dumps(facts), agent="forecaster", run_id=run_id)
             if out.get("summary"):
                 return out["summary"], "llm"
@@ -271,10 +272,13 @@ Amounts in INR (1 lakh = 100000, 1k = 1000)."""
 EXPLAIN_PROMPT = """You are FinPilot answering the user's money question using ONLY the provided numbers.
 Be direct (start with Yes / No / Tight), quote rupee figures, mention the lowest projected balance and the
 safety buffer, and if relevant name the specific categories to cut from "suggested_cuts".
+Write amounts as plain ASCII like "INR 20,000" (never the rupee symbol or unicode escapes) and copy every
+number exactly from the input, rounded to whole rupees.
 Respond as JSON {"answer": "..."} (max 120 words)."""
 
 QA_PROMPT = """You are FinPilot's Q&A agent. Answer the user's question using ONLY the data provided
-(their real categorised spending, recurring payments, patterns and forecast). Quote figures in INR.
+(their real categorised spending, recurring payments, patterns and forecast). Quote figures as plain ASCII
+"INR 12,345" (never the rupee symbol or unicode escapes).
 If the data cannot answer it, say so. Respond as JSON {"answer": "...", "evidence_ids": [..]} (max 150 words)."""
 
 
@@ -296,8 +300,15 @@ def ask(question: str) -> dict:
             "suggested_cuts")})
         expl = llm.chat_json(EXPLAIN_PROMPT, json.dumps({"question": question, "simulation": {
             k: v for k, v in sim.items() if k != "path"}, "path": sim["path"]}), agent="forecaster", run_id=run_id)
-        result = {"run_id": run_id, "intent": "what_if", "answer": expl.get("answer", ""), "simulation": sim,
-                  "evidence_ids": ["F1"]}
+        answer, bad = expl.get("answer", ""), []
+        if answer:
+            bad = unsupported_numbers(answer, sim)
+        if not answer or bad:  # never show the user a rupee figure the simulator did not compute
+            db.log_decision(run_id, "verifier", "explanation_rejected", {
+                "llm_answer": answer, "unsupported_numbers": bad, "used": "template"})
+            answer = simulation_sentence(sim)
+        result = {"run_id": run_id, "intent": "what_if", "answer": answer, "simulation": sim,
+                  "evidence_ids": ["F1"], "answer_source": "template" if bad or not expl.get("answer") else "llm"}
     else:
         analysis = state["analysis"]
         ctx = {"patterns": [{k: p[k] for k in ("id", "kind", "summary")} for p in analysis["patterns"]],
@@ -309,6 +320,42 @@ def ask(question: str) -> dict:
                   "evidence_ids": out.get("evidence_ids", [])}
     db.finish_run(run_id, result)
     return result
+
+
+_NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+
+def unsupported_numbers(text: str, sim: dict) -> list[str]:
+    """Rupee-sized numbers in an LLM explanation that do not match any figure the simulator computed."""
+    facts = [abs(float(v)) for k, v in sim.items() if isinstance(v, (int, float))]
+    facts += [abs(float(v)) for v in sim["decision"].values() if isinstance(v, (int, float))]
+    facts += [abs(float(p[k])) for p in sim["path"] for k in ("baseline", "scenario", "scenario_low")]
+    facts += [abs(float(c[k])) for c in sim.get("suggested_cuts", []) for k in ("cut_per_month", "current_per_month")]
+    bad = []
+    for tok in _NUM.findall(text):
+        value = float(tok.replace(",", ""))
+        if value < 100:  # small numbers: months, percentages, "26°C" style details
+            continue
+        if not any(abs(value - f) <= max(1.0, 0.005 * f) for f in facts):
+            bad.append(tok)
+    return bad
+
+
+def simulation_sentence(sim: dict) -> str:
+    """Deterministic explanation used whenever the LLM wording fails the number check."""
+    d = sim["decision"]
+    what = (f"a one-off INR {d['amount']:,.0f} purchase" if d["type"] == "purchase"
+            else f"a monthly change of INR {d['monthly_delta']:,.0f}" if d["type"] == "recurring_change"
+            else f"saving INR {d['amount']:,.0f} over {d.get('months')} months")
+    low, buf = sim["min_balance_pessimistic"], sim["safety_buffer"]
+    if sim["verdict"] == "affordable":
+        return (f"Yes. With {what}, your lowest projected balance is INR {sim['min_balance']:,.0f} "
+                f"(INR {low:,.0f} in the pessimistic case), above your INR {buf:,.0f} safety buffer.")
+    if sim["verdict"] == "tight":
+        return (f"Yes, but it's tight. With {what}, your balance dips to INR {sim['min_balance']:,.0f}, "
+                f"INR {sim['shortfall']:,.0f} below your INR {buf:,.0f} safety buffer.")
+    return (f"No. With {what}, your balance would fall to INR {sim['min_balance']:,.0f}, "
+            f"below zero and short of your INR {buf:,.0f} safety buffer.")
 
 
 def build_digest() -> dict:
