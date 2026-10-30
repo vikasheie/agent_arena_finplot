@@ -28,6 +28,8 @@ async def lifespan(_: FastAPI):
                 profiles.load_seed(pid)
             except FileNotFoundError:
                 pass
+        elif profiles.PROFILES[pid].get("goal") and not db.goals():  # profiles created before goals existed
+            db.add_goal(**profiles.PROFILES[pid]["goal"])
     db.current_db.set(None)
     scheduler.start()
     yield
@@ -85,6 +87,10 @@ class Balance(BaseModel):
 
 class Toggle(BaseModel):
     enabled: bool
+
+
+class RecState(BaseModel):
+    state: str = Field(pattern="^(active|accepted|dismissed)$")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -198,9 +204,10 @@ def insights():
             "recommendations": db.recommendations(latest["id"])}
 
 
-@api.post("/recommendations/{rec_id}/toggle")
-def toggle_rec(rec_id: int, body: Toggle):
-    db.set_recommendation_state(rec_id, "active" if body.enabled else "dismissed")
+@api.post("/recommendations/{rec_id}/state")
+def set_rec_state(rec_id: int, body: RecState):
+    """accepted = user will do it; dismissed = skip (fed back so the Advisor stops suggesting it)."""
+    db.set_recommendation_state(rec_id, body.state)
     return {"ok": True}
 
 

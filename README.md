@@ -16,11 +16,16 @@ Three built-in profiles, each with 7 months of realistic Indian bank data, plus 
 | **Aarav**, 23, freelancer | Irregular Upwork/Fiverr income, PG rent, gaming, a ₹59k laptop on a thin buffer |
 | **Sharma family** | Two incomes, home and car loan EMIs, quarterly school fees, parents' medicines, electricity climbing from ₹3,100 to ₹5,250 as AC use grows, a hospital bill and Diwali jewellery |
 
-The UI (`/`) is a dark "command centre" dashboard with four sections. Every number on it comes from the agents' real output:
-- **Command Center**: a telemetry bar showing the digest schedule, Mesh latency measured per call, and the Verifier's real accepted ÷ drafted rate. The 6-month trajectory hero shows actual balance, the current path with its 80% band, the optimised path with your active interventions applied, the safety buffer and your goal target. Metric cards cover 30-day net flow, fixed burn, subscriptions and a health index with a published formula. **Proactive interventions** are verified recommendations, each with a badge, evidence ids, "inspect evidence", rupee impact, days a goal is brought forward, and an on/off switch (switched-off ones are fed back to the Advisor). Below are the spending donut, Analyzer findings, live pipeline status with per-agent wall time, and the weekly digest.
-- **Simulation Lab**: plain-language what-ifs (Coordinator → Forecaster through Mesh), an instant deterministic scenario builder showing runway before and after, verdict, suggested cuts and a baseline-vs-decision chart, and goals.
-- **Transactions & Ingestion**: drag-and-drop CSV, manual entry, a "who labelled it" bar (llm / recheck / memory / user / fallback), recurring commitments, and category correction that teaches the merchant memory.
-- **Agent Graph & Audit**: the LangGraph diagram lights up live and can replay a trace, with per-agent calls, tokens, latency and wall time, the self-evaluation table from `eval/results.json`, the live execution stream, and the full decision trail per run.
+The UI (`/`) follows the official FinPilot demo flow, and every screen shows the agents' real output:
+- **Live Demo**: persona cards, each with a goal; a goal-progress ring; the CSV loader; a **Run FinPilot** button; playback controls (Pause / Next step / Reset, 1x / 2x, Auto / Step-by-step, keyboard shortcuts); and the stages Import → Categorize → Analyze → Forecast → Advise → Digest.
+  - **Categorize** shows every transaction with its category, confidence and **why** (the LLM's reason, a merchant-memory hit, a keyword rule, or "corrected by you"), plus inline correction.
+  - **Analyze** shows the spending donut, month-by-month income vs spend, and finding cards with evidence ids.
+  - **Forecast** shows the 6-month projection with its 80% band, the goal and the safety buffer, and a one-line summary (numbers from Python, optionally phrased by the Mesh LLM).
+  - **Advise** shows verified actions with *saves ₹X/mo*, **Accept**, **Why?** (reason, evidence and the Verifier's note) and **skip** (fed back to the Advisor).
+  - **Digest** shows the FinPilot Bot weekly message and the APScheduler schedule.
+  - The right-hand **Agent log** streams each step live, marking Mesh calls with model, tokens and latency, and other steps as "(no LLM)".
+  - An **Ask a what-if** box routes questions Coordinator → Simulator → Verdict, with a baseline vs decision chart.
+- **How it works**: the architecture graph with a trace player (14 steps), the self-evaluation table, and the per-run audit log.
 
 ## What it does
 

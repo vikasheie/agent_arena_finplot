@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     amount REAL NOT NULL,
     category TEXT,
     category_source TEXT,          -- memory | llm | llm_recheck | fallback | user
+    category_reason TEXT,          -- why this label (LLM explanation, memory hit, keyword rule, user)
     confidence REAL,
     created_at TEXT NOT NULL
 );
@@ -43,7 +44,7 @@ CREATE TABLE IF NOT EXISTS recommendations (
     reason TEXT NOT NULL,
     verified INTEGER NOT NULL,
     verifier_note TEXT,
-    state TEXT NOT NULL DEFAULT 'active',  -- active | dismissed (user toggle; dismissed advice is fed back)
+    state TEXT NOT NULL DEFAULT 'active',  -- active | accepted | dismissed (dismissed advice is fed back)
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS decision_trail (
@@ -96,6 +97,7 @@ def connect(path: str | None = None):
 MIGRATIONS = [
     "ALTER TABLE runs ADD COLUMN status TEXT NOT NULL DEFAULT 'done'",
     "ALTER TABLE recommendations ADD COLUMN state TEXT NOT NULL DEFAULT 'active'",
+    "ALTER TABLE transactions ADD COLUMN category_reason TEXT",
 ]
 
 
@@ -131,11 +133,13 @@ def uncategorized(path: str | None = None) -> list[dict]:
         return [dict(r) for r in conn.execute("SELECT * FROM transactions WHERE category IS NULL ORDER BY date, id")]
 
 
-def set_category(tx_id: int, category: str, source: str, confidence: float, path: str | None = None) -> None:
+def set_category(tx_id: int, category: str, source: str, confidence: float, reason: str = "",
+                 path: str | None = None) -> None:
     with connect(path) as conn:
         conn.execute(
-            "UPDATE transactions SET category = ?, category_source = ?, confidence = ? WHERE id = ?",
-            (category, source, confidence, tx_id),
+            "UPDATE transactions SET category = ?, category_source = ?, confidence = ?, category_reason = ? "
+            "WHERE id = ?",
+            (category, source, confidence, reason, tx_id),
         )
 
 

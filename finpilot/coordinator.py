@@ -33,6 +33,7 @@ class PipelineState(TypedDict, total=False):
     rejected_history: list[dict]
     advice_round: int
     recommendations: list[dict]
+    digest_preview: dict
 
 
 def _coordinator(state: PipelineState) -> PipelineState:
@@ -56,7 +57,25 @@ def _forecast(state: PipelineState) -> PipelineState:
     gs = forecaster.goal_progress(fc, db.goals()) if "error" not in fc else []
     if gs:
         db.log_decision(state["run_id"], "forecaster", "goal_progress", {"goals": gs})
+    if "error" not in fc:
+        fc["summary"], fc["summary_source"] = _forecast_summary(fc, gs, state["run_id"])
     return {"forecast": fc, "goal_status": gs}
+
+
+def _forecast_summary(fc: dict, gs: list[dict], run_id: int) -> tuple[str, str]:
+    """One plain-language sentence about the trajectory: computed facts, optionally phrased by the LLM."""
+    facts = forecaster.summary_facts(fc, gs)
+    if llm.available():
+        try:
+            out = llm.chat_json(
+                "You are the Forecaster agent of FinPilot. Rewrite these computed facts as ONE friendly sentence "
+                "(max 30 words) for the user, keeping every number exactly. Respond as JSON {\"summary\": \"...\"}",
+                json.dumps(facts), agent="forecaster", run_id=run_id)
+            if out.get("summary"):
+                return out["summary"], "llm"
+        except Exception as e:
+            db.log_decision(run_id, "forecaster", "error", {"error": str(e)})
+    return facts["sentence"], "template"
 
 
 def _advise(state: PipelineState) -> PipelineState:
@@ -94,7 +113,26 @@ def _finalize(state: PipelineState) -> PipelineState:
     db.log_decision(state["run_id"], "coordinator", "finalize", {
         "recommendations": len(recs), "advice_rounds": state.get("advice_round", 0),
         "rejected_total": len(state.get("rejected_history", []))})
-    return {"recommendations": recs}
+    digest = compose_digest(state.get("analysis") or {}, state.get("forecast") or {}, recs)
+    db.log_decision(state["run_id"], "digest", "compose", digest)
+    return {"recommendations": recs, "digest_preview": digest}
+
+
+def compose_digest(analysis: dict, fc: dict, recs: list[dict]) -> dict:
+    """The weekly message: one insight from the user's own data + the single highest-impact verified action."""
+    patterns = {p["id"]: p for p in analysis.get("patterns", [])}
+    top = max(recs, key=lambda r: r.get("monthly_impact") or 0) if recs else None
+    if top:
+        ev = next((patterns[i] for i in top["evidence_ids"] if i in patterns), None)
+        insight = ev["summary"] if ev else top["reason"]
+        saving = f" to save INR {top['monthly_impact']:,.0f}/month" if top.get("monthly_impact") else ""
+        return {"insight": insight, "action": f"{top['action']}{saving}", "based_on": top["evidence_ids"]}
+    if not fc or "error" in fc:
+        return {"insight": "Not enough history yet to forecast.", "action": "Upload at least two full months.",
+                "based_on": []}
+    end = fc["path"][-1]
+    return {"insight": f"You net INR {fc['monthly_net']:,.0f}/month; projected balance in {end['month']} is "
+                       f"INR {end['balance']:,.0f}.", "action": "No new action this week.", "based_on": ["F1"]}
 
 
 def _after_forecast(state: PipelineState) -> str:
@@ -141,7 +179,7 @@ def run_pipeline(run_id: int | None = None) -> dict:
         db.finish_run(run_id, {"error": str(e)}, status="error")
         raise
     keep = {k: state.get(k) for k in ("run_id", "categorization", "analysis", "forecast", "goal_status",
-                                      "recommendations", "rejected_history", "advice_round")}
+                                      "recommendations", "rejected_history", "advice_round", "digest_preview")}
     keep["tokens"] = db.token_usage(run_id)
     db.finish_run(run_id, keep)
     return keep
@@ -162,7 +200,7 @@ def start_pipeline() -> int:
     return run_id
 
 
-AGENT_ORDER = ["coordinator", "categorizer", "analyzer", "forecaster", "advisor", "verifier"]
+AGENT_ORDER = ["coordinator", "categorizer", "analyzer", "forecaster", "advisor", "verifier", "digest"]
 
 
 def run_status(run_id: int) -> dict:
@@ -262,16 +300,5 @@ def ask(question: str) -> dict:
 def build_digest() -> dict:
     """One key insight + one action, generated from the latest real analysis (used by the scheduler)."""
     state = run_pipeline()
-    recs = sorted(state.get("recommendations") or [], key=lambda r: -(r.get("monthly_impact") or 0))
-    fc = state["forecast"]
-    if "error" in fc:
-        insight = "Not enough history yet to forecast; keep logging transactions."
-        action = "Upload at least two full months of transactions."
-    else:
-        end = fc["path"][-1]
-        insight = (f"At your current pace you net INR {fc['monthly_net']:,.0f}/month; projected balance in "
-                   f"{end['month']} is INR {end['balance']:,.0f}.")
-        action = f"{recs[0]['action']} ({recs[0]['reason']})" if recs else "No new action this week."
-    db.log_decision(state["run_id"], "coordinator", "digest", {
-        "insight": insight, "action": action, "based_on": recs[0]["evidence_ids"] if recs else ["F1"]})
-    return {"run_id": state["run_id"], "insight": insight, "action": action}
+    d = state.get("digest_preview") or compose_digest(state.get("analysis") or {}, state.get("forecast") or {}, [])
+    return {"run_id": state["run_id"], "insight": d["insight"], "action": d["action"]}

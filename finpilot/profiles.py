@@ -8,13 +8,25 @@ ROOT = Path(__file__).resolve().parent.parent
 SEED_DIR = ROOT / "data" / "profiles"
 
 PROFILES = {
-    "priya": {"name": "Priya", "avatar": "P", "opening_balance": 60000,
+    "priya": {"name": "Priya", "avatar": "PR", "opening_balance": 60000,
+              "who": "28 · Software engineer · Bengaluru",
+              "story": "Earns well, spends fast. Subscriptions keep creeping up.",
+              "goal": {"name": "Emergency fund", "target_amount": 150000, "target_date": "2027-03-31"},
               "blurb": "28 · software engineer, Bengaluru · subscriptions creeping up"},
-    "aarav": {"name": "Aarav", "avatar": "A", "opening_balance": 15000,
+    "aarav": {"name": "Aarav", "avatar": "AA", "opening_balance": 15000,
+              "who": "23 · Freelance designer · Pune",
+              "story": "Irregular income. Wants a 6-month safety buffer.",
+              "goal": {"name": "6-month safety buffer", "target_amount": 180000, "target_date": "2027-06-30"},
               "blurb": "23 · freelance designer · irregular income, thin buffer"},
-    "sharma": {"name": "Sharma family", "avatar": "S", "opening_balance": 250000,
+    "sharma": {"name": "The Sharma family", "avatar": "RS", "opening_balance": 250000,
+               "who": "Rohan & Meera · Bengaluru",
+               "story": "Two incomes, two loans. School fees due every quarter, electricity climbing.",
+               "goal": {"name": "Family trip to Goa", "target_amount": 150000, "target_date": "2027-04-30"},
                "blurb": "Household of 4 · home-loan EMI, school fees, rising electricity"},
-    "me": {"name": "My data", "avatar": "M", "opening_balance": 0,
+    "me": {"name": "My data", "avatar": "ME", "opening_balance": 0,
+           "who": "Your own bank statement",
+           "story": "Upload a CSV or log transactions by hand.",
+           "goal": None,
            "blurb": "Upload your own bank CSV or add transactions manually"},
 }
 DEFAULT = "priya"
@@ -42,9 +54,13 @@ def load_seed(pid: str) -> int:
     if not seed.exists():
         raise FileNotFoundError(f"no seed data for {pid}; run `python -m eval.generate_data`")
     db.reset()
-    db.set_setting("opening_balance", str(PROFILES[pid]["opening_balance"]))
+    meta = PROFILES[pid]
+    db.set_setting("opening_balance", str(meta["opening_balance"]))
+    if meta.get("goal"):
+        db.add_goal(**meta["goal"])
     return len(ingest.ingest_csv(seed.read_text()))
 
 
 def summary(pid: str) -> dict:
-    return {"id": pid, **PROFILES[pid], "has_seed": (SEED_DIR / f"{pid}.csv").exists()}
+    seed = SEED_DIR / f"{pid}.csv"
+    return {"id": pid, **PROFILES[pid], "has_seed": seed.exists(), "seed_file": seed.name if seed.exists() else None}

@@ -206,6 +206,24 @@ def forecast(run_id: int | None = None, horizon: int = 6) -> dict:
     return fc
 
 
+def summary_facts(fc: dict, goal_status: list[dict]) -> dict:
+    """Computed facts behind the forecast sentence (the LLM may only rephrase these)."""
+    end = fc["path"][-1]
+    facts = {"monthly_net": round(fc["monthly_net"]), "balance_now": round(fc["current_balance"]),
+             "end_month": end["month"], "end_balance": round(end["balance"]), "safety_buffer": round(fc["safety_buffer"])}
+    sentence = (f"At this pace you add INR {fc['monthly_net']:,.0f} a month and reach INR {end['balance']:,.0f} "
+                f"by {end['month']}") if fc["monthly_net"] >= 0 else (
+                f"At this pace you lose INR {-fc['monthly_net']:,.0f} a month, falling to INR {end['balance']:,.0f} "
+                f"by {end['month']}")
+    if goal_status:
+        g = goal_status[0]
+        facts["goal"] = {k: g[k] for k in ("name", "status", "needed_per_month", "gap_per_month", "months_left")}
+        sentence += (f"; “{g['name']}” is on track" if g["status"] == "on_track"
+                     else f"; “{g['name']}” needs INR {g['gap_per_month']:,.0f}/month more to land on time")
+    facts["sentence"] = sentence + "."
+    return facts
+
+
 def goal_progress(fc: dict, goals: list[dict], today: date | None = None) -> list[dict]:
     """Is each goal on track given the projected monthly surplus?"""
     today = today or date.today()

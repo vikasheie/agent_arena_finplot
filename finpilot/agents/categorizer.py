@@ -50,12 +50,12 @@ def merchant_key(description: str) -> str:
     return " ".join(tokens[:2]) or description.strip().lower()
 
 
-def _fallback_category(tx: dict) -> tuple[str, float]:
-    """Offline keyword heuristic over the transaction text. Used only without a Mesh key."""
+def _fallback_category(tx: dict) -> tuple[str, float, str]:
+    """Offline keyword heuristic over the transaction text. Used only when Mesh is unavailable."""
     text = tx["description"].lower()
     if tx["amount"] > 0:
-        return ("income", 0.6) if any(k in text for k in ("salary", "payroll", "freelance", "interest")) \
-            else ("transfers", 0.4)
+        hit = next((k for k in ("salary", "payroll", "freelance", "interest", "payout") if k in text), None)
+        return ("income", 0.6, f"keyword rule: '{hit}'") if hit else ("transfers", 0.4, "money in, no income keyword")
     for cat, keys in {
         "emi": ("emi", "loan"),
         "rent": ("rent", "landlord", "society", " pg"),
@@ -71,9 +71,10 @@ def _fallback_category(tx: dict) -> tuple[str, float]:
         "travel": ("indigo", "irctc", "makemytrip", "airbnb", "oyo", "goibibo"),
         "transfers": ("transfer", "atm", "cred", "zerodha", "groww", "sip"),
     }.items():
-        if any(re.search(rf"\b{re.escape(k.strip())}\b", text) for k in keys):
-            return cat, 0.5
-    return "other", 0.2
+        hit = next((k.strip() for k in keys if re.search(rf"\b{re.escape(k.strip())}\b", text)), None)
+        if hit:
+            return cat, 0.5, f"keyword rule: '{hit}'"
+    return "other", 0.2, "no keyword matched"
 
 
 def _invalid_reason(tx: dict, label: dict | None) -> str | None:
@@ -101,7 +102,8 @@ def _system_prompt() -> str:
         "Classify each bank transaction into exactly one category using its description, amount and "
         "direction (amount > 0 is money in, < 0 is money out).\n"
         f"Categories:\n{guide}\n"
-        'Respond with JSON: {"labels": [{"id": <int>, "category": <category>, "confidence": <0..1>}]}. '
+        'Respond with JSON: {"labels": [{"id": <int>, "category": <category>, "confidence": <0..1>, '
+        '"why": <max 8 words, e.g. "Swiggy is food delivery">}]}. '
         "Give a label for every id. Use lower confidence when the description is ambiguous."
     )
 
@@ -143,15 +145,15 @@ def categorize_pending(run_id: int | None = None) -> dict:
     for tx in pending:
         key = merchant_key(tx["description"])
         if key in memory:
-            db.set_category(tx["id"], memory[key], "memory", 0.99)
+            db.set_category(tx["id"], memory[key], "memory", 0.99, f"merchant memory: '{key}' seen before")
             stats["memory"] += 1
         else:
             to_llm.append(tx)
 
     if not llm.available():
         for tx in to_llm:
-            cat, conf = _fallback_category(tx)
-            db.set_category(tx["id"], cat, "fallback", conf)
+            cat, conf, why = _fallback_category(tx)
+            db.set_category(tx["id"], cat, "fallback", conf, why)
             stats["fallback"] += 1
         db.log_decision(run_id, AGENT, "categorize", stats)
         return stats
@@ -190,10 +192,11 @@ def categorize_pending(run_id: int | None = None) -> dict:
         if lab and (reason is None or reason.startswith("low confidence")):
             cat, conf = lab["category"], float(lab.get("confidence", 0.5))
             source = "llm_recheck" if lab.get("_rechecked") else "llm"
+            why = str(lab.get("why") or "")[:120] + (" (re-checked)" if source == "llm_recheck" else "")
         else:  # still invalid after the loop: deterministic fallback, flagged
-            cat, conf = _fallback_category(tx)
+            cat, conf, why = _fallback_category(tx)
             source = "fallback"
-        db.set_category(tx["id"], cat, source, conf)
+        db.set_category(tx["id"], cat, source, conf, why)
         stats[source] += 1
         if source != "fallback" and conf >= 0.85:
             db.remember_merchant(merchant_key(tx["description"]), cat, "llm")
@@ -207,5 +210,5 @@ def correct(tx_id: int, category: str) -> None:
     if category not in config.CATEGORIES:
         raise ValueError(f"unknown category {category}")
     tx = next(t for t in db.all_transactions() if t["id"] == tx_id)
-    db.set_category(tx_id, category, "user", 1.0)
+    db.set_category(tx_id, category, "user", 1.0, "corrected by you")
     db.remember_merchant(merchant_key(tx["description"]), category, "user")

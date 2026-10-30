@@ -110,8 +110,8 @@ def test_pipeline_advisor_verifier_loop_iterates(labelled_db, monkeypatch):
     rounds = []
 
     def fake(system, user, *, agent, run_id=None, model=None, **kw):
-        if agent == "analyzer":
-            return {"narrative": "test"}
+        if agent in ("analyzer", "forecaster"):
+            return {"narrative": "test", "summary": "test"}
         assert agent == "advisor"
         rounds.append(user)
         data = json.loads(user.split("\n\n")[0])
