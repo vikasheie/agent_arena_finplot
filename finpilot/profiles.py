@@ -58,7 +58,7 @@ def load_seed(pid: str) -> int:
     db.set_setting("opening_balance", str(meta["opening_balance"]))
     if meta.get("goal"):
         db.add_goal(**meta["goal"])
-    return len(ingest.ingest_csv(seed.read_text()))
+    return ingest.ingest_csv(seed.read_text())["inserted"]
 
 
 def summary(pid: str) -> dict:

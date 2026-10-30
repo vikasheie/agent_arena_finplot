@@ -14,6 +14,9 @@ from finpilot import config, llm
 ADVISOR = "advisor"
 VERIFIER = "verifier"
 
+# Spend FinPilot must never advise cutting (medicines, school fees, rent, loan EMIs, money sent to family).
+ESSENTIAL_CATEGORIES = {"health", "education", "rent", "emi", "transfers"}
+
 GENERIC = re.compile(r"\b(track your (spending|expenses)|create a budget|spend less|save more|be mindful|"
                      r"cut back on unnecessary|consider budgeting)\b", re.I)
 
@@ -26,6 +29,9 @@ Produce 3-5 specific, proactive recommendations. Rules:
   evidence amounts (never larger than what the evidence shows). Use 0 for one-off or alert-type advice.
 - "reason" explains, with numbers, which pattern or forecast triggered it.
 - No generic advice such as "create a budget" or "track your spending".
+- Never suggest cutting essentials: education/tuition, medicines/health, insurance, rent, loan EMIs, or support
+  sent to family. Target discretionary spend (dining, delivery, shopping, subscriptions, entertainment, travel)
+  and bills that are rising (electricity, fuel).
 - For bills that cannot be cancelled (electricity, fuel, groceries) give ONE concrete behavioural action
   (e.g. "Run the AC on a 26°C night-mode timer") with a saving no larger than the rise shown in the trend.
 - Prioritise items that fix a negative forecast, a goal that is behind, or a sharp anomaly.
@@ -94,6 +100,11 @@ def verify(recs: list[dict], evidence: dict[str, dict]) -> tuple[list[dict], lis
             problems.append("action does not name the specific merchant/category from its evidence")
         if GENERIC.search(text) and not names:
             problems.append("generic advice")
+        cut_essential = [e["id"] for e in cited if e["kind"] in {"recurring", "top_merchant", "anomaly"}
+                         and e["data"].get("category") in ESSENTIAL_CATEGORIES]
+        if cut_essential and impact > 0:
+            problems.append(f"asks the user to cut essential spend ({', '.join(cut_essential)}); target discretionary "
+                            "spend or rising bills instead")
         if problems:
             rejected.append({**r, "verified": False, "verifier_note": "; ".join(problems)})
         else:

@@ -128,6 +128,13 @@ def all_transactions(path: str | None = None) -> list[dict]:
         return [dict(r) for r in conn.execute("SELECT * FROM transactions ORDER BY date, id")]
 
 
+def needs_labels(include_fallback: bool, path: str | None = None) -> list[dict]:
+    """Rows without a category, plus rows labelled by the offline fallback when the LLM is reachable again."""
+    extra = " OR category_source = 'fallback'" if include_fallback else ""
+    with connect(path) as conn:
+        return [dict(r) for r in conn.execute(f"SELECT * FROM transactions WHERE category IS NULL{extra} ORDER BY date, id")]
+
+
 def uncategorized(path: str | None = None) -> list[dict]:
     with connect(path) as conn:
         return [dict(r) for r in conn.execute("SELECT * FROM transactions WHERE category IS NULL ORDER BY date, id")]

@@ -157,3 +157,41 @@ def test_circuit_breaker_stops_calls_after_billing_error(fresh_db, monkeypatch):
         with pytest.raises(RuntimeError):
             llm.chat_json("s", "u", agent="categorizer")
     assert len(calls) == 1  # first call trips the breaker; the next two never reach Mesh
+
+
+def test_reupload_skips_duplicates_but_keeps_genuine_repeats(fresh_db):
+    csv_text = "date,description,amount\n2026-01-05,METRO,-40\n2026-01-05,METRO,-40\n2026-01-06,SWIGGY,-300\n"
+    first = ingest.ingest_csv(csv_text)
+    assert first["inserted"] == 3  # two identical metro rides on one day are both real
+    again = ingest.ingest_csv(csv_text)
+    assert again == {"inserted": 0, "skipped_duplicates": 3, "ids": []}
+    assert len(db.all_transactions()) == 3
+
+
+def test_fallback_labels_are_relabelled_once_llm_is_back(fresh_db, monkeypatch):
+    db.insert_transactions([{"date": "2026-01-01", "description": "UPI/CHAAYOS/1", "amount": -250}])
+    monkeypatch.setattr(llm, "available", lambda: False)
+    categorizer.categorize_pending()
+    assert db.all_transactions()[0]["category_source"] == "fallback"
+
+    def fake(system, user, *, agent, run_id=None, model=None, **kw):
+        ids = [int(x) for x in __import__("re").findall(r'"id": (\d+)', user)]
+        return {"labels": [{"id": i, "category": "dining", "confidence": 0.95, "why": "Chaayos is a tea cafe"}
+                           for i in ids]}
+
+    monkeypatch.setattr(llm, "available", lambda: True)
+    monkeypatch.setattr(llm, "chat_json", fake)
+    stats = categorizer.categorize_pending()
+    tx = db.all_transactions()[0]
+    assert stats["llm"] == 1 and tx["category"] == "dining" and tx["category_source"] == "llm"
+    assert tx["category_reason"] == "Chaayos is a tea cafe"
+
+
+def test_verifier_rejects_cutting_essentials(labelled_db, monkeypatch):
+    monkeypatch.setattr(llm, "available", lambda: False)
+    analysis, fc, ev = _evidence(labelled_db)
+    rent = next(p for p in analysis["patterns"] if p["kind"] == "recurring" and p["data"]["category"] == "rent")
+    rec = {"title": "Move to a cheaper flat", "action": f"Negotiate rent with {rent['data']['name']}",
+           "monthly_impact": 2000, "evidence_ids": [rent["id"]], "reason": "rent is high"}
+    ok, bad = advisor.verify([rec], ev)
+    assert not ok and "essential spend" in bad[0]["verifier_note"]

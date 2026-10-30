@@ -1,6 +1,7 @@
 """Transaction ingestion: CSV upload (several common bank layouts) or manual entry."""
 import csv
 import io
+from collections import Counter
 from datetime import datetime
 
 from finpilot import db
@@ -52,8 +53,23 @@ def parse_csv(text: str) -> list[dict]:
     return rows
 
 
-def ingest_csv(text: str) -> list[int]:
-    return db.insert_transactions(parse_csv(text))
+def ingest_csv(text: str) -> dict:
+    """Insert rows, skipping ones already stored (same date, description and amount).
+
+    Counting occurrences keeps genuine repeats inside one statement (two ₹40 metro rides on the same day)
+    while making a re-upload of the same file a no-op.
+    """
+    rows = parse_csv(text)
+    existing = Counter((t["date"], t["description"], round(t["amount"], 2)) for t in db.all_transactions())
+    fresh = []
+    for r in rows:
+        key = (r["date"], r["description"], round(r["amount"], 2))
+        if existing[key] > 0:
+            existing[key] -= 1
+        else:
+            fresh.append(r)
+    ids = db.insert_transactions(fresh)
+    return {"inserted": len(ids), "skipped_duplicates": len(rows) - len(ids), "ids": ids}
 
 
 def ingest_manual(date_str: str, description: str, amount: float, kind: str = "expense") -> int:

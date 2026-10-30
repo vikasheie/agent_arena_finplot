@@ -8,6 +8,7 @@ what-if simulator (affordability / decisions) or the Q&A agent (free-form questi
 """
 import contextvars
 import json
+import re
 import threading
 from datetime import date, datetime
 from typing import Any, TypedDict
@@ -37,7 +38,7 @@ class PipelineState(TypedDict, total=False):
 
 
 def _coordinator(state: PipelineState) -> PipelineState:
-    pending = len(db.uncategorized())
+    pending = len(categorizer.pending_rows())
     plan = (["categorize"] if pending else []) + ["analyze", "forecast"] + (["advise"] if llm.available() else [])
     db.log_decision(state["run_id"], "coordinator", "plan", {
         "uncategorized": pending, "plan": plan, "llm_available": llm.available()})
@@ -121,12 +122,25 @@ def _finalize(state: PipelineState) -> PipelineState:
 def compose_digest(analysis: dict, fc: dict, recs: list[dict]) -> dict:
     """The weekly message: one insight from the user's own data + the single highest-impact verified action."""
     patterns = {p["id"]: p for p in analysis.get("patterns", [])}
-    top = max(recs, key=lambda r: r.get("monthly_impact") or 0) if recs else None
+    essential = {"education", "health", "rent", "emi", "transfers"}
+
+    def touches_essential(r: dict) -> bool:
+        return any(patterns.get(i, {}).get("data", {}).get("category") in essential for i in r["evidence_ids"])
+
+    specific = {"bill_trend", "recurring", "top_merchant", "anomaly", "trend", "impulse"}
+
+    def is_specific(r: dict) -> bool:  # tied to a named bill/merchant, not just the overall summary
+        return any(patterns.get(i, {}).get("kind") in specific for i in r["evidence_ids"])
+
+    # Headline: specific > broad, never essentials, then the biggest monthly impact.
+    ranked = sorted(recs, key=lambda r: (touches_essential(r), not is_specific(r), -(r.get("monthly_impact") or 0)))
+    top = ranked[0] if ranked else None
     if top:
         ev = next((patterns[i] for i in top["evidence_ids"] if i in patterns), None)
         insight = ev["summary"] if ev else top["reason"]
-        saving = f" to save INR {top['monthly_impact']:,.0f}/month" if top.get("monthly_impact") else ""
-        return {"insight": insight, "action": f"{top['action']}{saving}", "based_on": top["evidence_ids"]}
+        mentions_amount = re.search(r"(INR|₹)\s?[\d,]+", top["action"])
+        saving = f" to save INR {top['monthly_impact']:,.0f}/month" if top.get("monthly_impact") and not mentions_amount else ""
+        return {"insight": insight, "action": f"{top['action'].rstrip('. ')}{saving}", "based_on": top["evidence_ids"]}
     if not fc or "error" in fc:
         return {"insight": "Not enough history yet to forecast.", "action": "Upload at least two full months.",
                 "based_on": []}
@@ -239,7 +253,7 @@ def run_status(run_id: int) -> dict:
 
 def _latest_state() -> dict:
     latest = db.latest_run("pipeline")
-    if latest and not db.uncategorized():
+    if latest and not categorizer.pending_rows():
         return latest["state"]
     return run_pipeline()
 

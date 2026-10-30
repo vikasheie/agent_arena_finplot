@@ -144,10 +144,10 @@ def overview():
 @api.post("/transactions/upload")
 async def upload(file: UploadFile = File(...)):
     try:
-        ids = ingest.ingest_csv((await file.read()).decode("utf-8", errors="replace"))
+        result = ingest.ingest_csv((await file.read()).decode("utf-8", errors="replace"))
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return {"inserted": len(ids)}
+    return {"inserted": result["inserted"], "skipped_duplicates": result["skipped_duplicates"]}
 
 
 @api.post("/transactions")

@@ -442,9 +442,11 @@ function renderSummary() {
 }
 function renderUpload() {
   const p = S.profiles.find(p => p.id === S.profile) || {}, n = S.txs.length;
-  $("upload-t").innerHTML = n ? `<div class="f">${esc(p.seed_file || "your-statement.csv")} · ${n} rows</div><div style="font-size:13.5px">Loaded and ready</div>${p.has_seed ? `<button class="skip" id="reseed" style="padding:4px 0 0">reload sample data</button>` : ""}`
+  $("upload-t").innerHTML = n ? `<div class="f">${esc(p.seed_file || "your-statement.csv")} · ${n} rows</div><div style="font-size:13.5px">Loaded and ready</div>${p.has_seed ? `<button class="skip" id="reseed" style="padding:4px 0 0">reload sample data</button>` : `<button class="skip" id="reseed" style="padding:4px 0 0">clear my data</button>`}`
     : `<b style="color:var(--ink)">Upload transactions</b><div style="font-size:13px">CSV: date, description, amount</div>`;
-  const rs = $("reseed"); if (rs) rs.onclick = async e => { e.preventDefault(); e.stopPropagation(); if (!confirm("Reload this persona's sample transactions? Runs and corrections are cleared.")) return; await post("/api/profile/reset"); toast("Sample data reloaded"); await refresh(true); };
+  const rs = $("reseed"); if (rs) rs.onclick = async e => { e.preventDefault(); e.stopPropagation();
+    if (!confirm(p.has_seed ? "Reload this persona's sample transactions? Runs and corrections are cleared." : "Delete all transactions, runs and goals in My data?")) return;
+    await post("/api/profile/reset"); toast(p.has_seed ? "Sample data reloaded" : "My data cleared"); S.status = null; S.insights = null; await refresh(true); };
 }
 function renderStages() {
   $("stages").innerHTML = STAGES.map((s, i) => { const cls = i < S.stage || (i === S.stage && i <= S.reached && !isRunning() && S.stage === 5) ? "done" : i === S.stage ? "cur" : "";
@@ -610,7 +612,7 @@ function renderLog() {
 }
 function renderBanner() {
   const b = $("banner"), errs = (S.status?.events || []).filter(e => /error/.test(e.step)), calls = (S.status?.events || []).filter(e => e.step === "llm_call");
-  if (S.status && !isRunning() && errs.length && !calls.length) { b.innerHTML = `<b>The Mesh API didn't answer on this run</b>, so categories came from the offline keyword rules and the Advisor gave no advice. Error: <span class="mono">${esc(errs[0].detail.error.slice(0, 120))}</span>`; b.classList.add("show"); }
+  if (S.status && !isRunning() && errs.length && !calls.length) { b.innerHTML = `<b>The Mesh API didn't answer on the last run (${esc((S.status.started_at || "").slice(11, 16))})</b>. Press <b>Run FinPilot</b> again once Mesh has credit; rows labelled by keyword rules are then re-labelled by the LLM automatically. Details: so categories came from the offline keyword rules and the Advisor gave no advice. Error: <span class="mono">${esc(errs[0].detail.error.slice(0, 120))}</span>`; b.classList.add("show"); }
   else b.classList.remove("show");
 }
 async function renderMeshChip() {
@@ -648,7 +650,9 @@ async function run() {
 }
 async function uploadFile(f) {
   const fd = new FormData(); fd.append("file", f);
-  try { const r = await api("/api/transactions/upload", {method: "POST", body: fd}); toast(`Imported ${r.inserted} rows. Press Run FinPilot.`); await refresh(true); } catch (e) { toast(e.message); }
+  try { const r = await api("/api/transactions/upload", {method: "POST", body: fd});
+    toast(r.inserted ? `Imported ${r.inserted} new rows${r.skipped_duplicates ? `, skipped ${r.skipped_duplicates} already loaded` : ""}. Press Run FinPilot.` : `All ${r.skipped_duplicates} rows were already loaded. Nothing added.`);
+    await refresh(true); } catch (e) { toast(e.message); }
 }
 
 /* ---------------- ask ---------------- */

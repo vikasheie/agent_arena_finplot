@@ -141,8 +141,13 @@ def _few_shot(labelled: list[dict], k: int = 25) -> str:
     return "Examples from this user's own history:\n" + "\n".join(shots) + "\n\n" if shots else ""
 
 
+def pending_rows() -> list[dict]:
+    # Keyword-fallback labels are provisional: once Mesh is reachable they are re-labelled by the LLM.
+    return db.needs_labels(include_fallback=llm.available())
+
+
 def categorize_pending(run_id: int | None = None) -> dict:
-    pending = db.uncategorized()
+    pending = pending_rows()
     stats = {"total": len(pending), "memory": 0, "llm": 0, "llm_recheck": 0, "fallback": 0, "recheck_reasons": []}
     if not pending:
         return stats
