@@ -416,7 +416,7 @@ function renderPersonas() {
 }
 async function switchProfile(pid) {
   if (pid === S.profile) return;
-  S.profile = pid; store.set("fp-profile", pid); stopPolling(); stopPlay(); S.seen = 0; S.auditRun = null;
+  S.profile = pid; store.set("fp-profile", pid); stopPolling(); stopPlay(); S.seen = 0; S.auditRun = null; S.sendStatus = "";
   $("answers").innerHTML = ""; renderPersonas(); renderPresets(); await refresh(true);
 }
 async function refresh(resetPlayback) {
@@ -567,9 +567,28 @@ function stageDigest(el, st) {
     <div class="botnote">${dg.enabled ? `Sent automatically by APScheduler every Monday · Next run in ${nextRunIn(dg.next_scheduled)}` : "Weekly digest is switched off for this profile"}</div>
     <div class="botnote" style="margin-top:6px">Delivery: ${["telegram", "email"].map(c => `<span class="chip ${dg.channels?.[c] ? "g" : ""}">${c} ${dg.channels?.[c] ? "on" : "off"}</span>`).join(" ")} <span class="chip g">in-app on</span>${dg.channels && !dg.channels.telegram && !dg.channels.email ? `<div style="margin-top:6px">Add Telegram or SMTP settings to <span class="mono">.env</span> to receive it outside the app (see README).</div>` : ""}</div>
     <div style="display:flex;justify-content:center;gap:12px;align-items:center;margin-top:12px"><label class="switch" title="Weekly digest on/off"><input type="checkbox" id="dgt" ${dg.enabled ? "checked" : ""}><span></span></label><span class="muted">weekly digest</span><button class="btn sm" id="dgnow">Send now</button></div>
+    <div id="dgstatus" class="botnote" style="min-height:22px">${S.sendStatus || ""}</div>
     ${(dg.digests || []).length ? `<div style="max-width:620px;margin:16px auto 0"><div class="mono muted" style="font-size:12px;margin-bottom:6px">Delivered</div>${dg.digests.slice(0, 3).map(x => `<div style="padding:8px 0;border-top:1px solid var(--line);font-size:13px">${esc(x.insight)} <span class="muted">→ ${esc(x.action)}</span><div class="mono muted" style="font-size:11px">${x.created_at.slice(0, 16).replace("T", " ")} · ${esc(x.delivered_via)}</div></div>`).join("")}</div>` : ""}`;
   $("dgt").onchange = async e => { await post("/api/digest/toggle", {enabled: e.target.checked}); S.digests = await api("/api/digests"); stageDigest(el, st); };
-  $("dgnow").onclick = async () => { try { await post("/api/digest/run-now"); toast("Digest delivered"); } catch (e) { toast(e.message); } S.digests = await api("/api/digests"); stageDigest(el, st); };
+  $("dgnow").onclick = async () => {
+    const btn = $("dgnow"), status = $("dgstatus"), t0 = Date.now();
+    btn.disabled = true; btn.innerHTML = `<span class="spin" style="display:inline-block;width:13px;height:13px;border-width:2px"></span> Sending…`;
+    const tick = setInterval(() => { status.innerHTML = `<span style="color:var(--ink-2)">Re-running the agents on your latest data, then sending… ${Math.round((Date.now() - t0) / 1000)}s</span>`; }, 500);
+    try {
+      const r = await post("/api/digest/run-now");
+      const via = r.delivered_via || "in_app", time = new Date().toLocaleTimeString("en-IN", {hour: "2-digit", minute: "2-digit"});
+      const where = via === "in_app" ? "saved in the app (no Telegram/e-mail configured)" : `sent via ${via.split("+").map(c => c === "email" ? "e-mail" : "Telegram").join(" and ")}`;
+      S.sendStatus = `<span style="color:var(--green)">✓ Digest ${where} at ${time}</span>`;
+      toast(via === "in_app" ? "Digest saved in the app" : `✓ Digest ${where}`);
+      const [ins, dg] = await Promise.all([api("/api/insights"), api("/api/digests")]);  // the job re-ran the agents
+      if (ins.state) S.insights = ins; S.digests = dg;
+    } catch (e) {
+      S.sendStatus = `<span style="color:var(--red)">✗ Not sent: ${esc(e.message)}</span>`; toast(e.message);
+    } finally {
+      clearInterval(tick);
+      stageDigest(el, S.insights?.state || st);
+    }
+  };
 }
 
 /* ---------------- agent log ---------------- */
