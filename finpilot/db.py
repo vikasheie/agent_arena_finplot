@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS digests (
 
 
 def now() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    return datetime.now().isoformat(timespec="milliseconds")
 
 
 @contextmanager

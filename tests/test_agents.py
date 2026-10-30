@@ -134,3 +134,26 @@ def test_pipeline_advisor_verifier_loop_iterates(labelled_db, monkeypatch):
                      ("verifier", "verify"), ("coordinator", "finalize")]:
         assert expected in steps
     assert steps.count(("verifier", "verify")) == 2
+
+
+def test_circuit_breaker_stops_calls_after_billing_error(fresh_db, monkeypatch):
+    import httpx
+    from openai import APIStatusError
+
+    calls = []
+
+    class FakeCompletions:
+        def create(self, **kw):
+            calls.append(kw["model"])
+            req = httpx.Request("POST", "https://api.meshapi.ai/v1/chat/completions")
+            raise APIStatusError("Insufficient balance", response=httpx.Response(402, request=req), body=None)
+
+    class FakeClient:
+        chat = type("Chat", (), {"completions": FakeCompletions()})()
+
+    monkeypatch.setattr(llm, "client", lambda: FakeClient())
+    monkeypatch.setattr(llm, "_breaker", {"open_until": 0.0, "reason": ""})
+    for _ in range(3):
+        with pytest.raises(RuntimeError):
+            llm.chat_json("s", "u", agent="categorizer")
+    assert len(calls) == 1  # first call trips the breaker; the next two never reach Mesh

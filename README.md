@@ -16,13 +16,11 @@ Three built-in profiles, each with 7 months of realistic Indian bank data, plus 
 | **Aarav**, 23, freelancer | Irregular Upwork/Fiverr income, PG rent, gaming, a ₹59k laptop on a thin buffer |
 | **Sharma family** | Two incomes, home and car loan EMIs, quarterly school fees, parents' medicines, electricity climbing from ₹3,100 to ₹5,250 as AC use grows, a hospital bill and Diwali jewellery |
 
-The UI (`/`) has six tabs:
-- **Overview**: KPI tiles, a donut of where the money goes, the cash-flow forecast with its 80% band and safety buffer, verified recommendations (each with an on/off switch, and switched-off ones are fed back to the Advisor), Analyzer findings with evidence ids, goals, and fixed bills.
-- **Agents & trace**: the LangGraph diagram lights up live while a run is in progress, with a card per agent showing Mesh calls, tokens and output, a live event feed, and trace replay.
-- **Ask & what-if**: chat routed by the Coordinator, plus an instant what-if simulator with a baseline vs. scenario chart.
-- **Transactions**: drag-and-drop CSV upload, manual entry, and category correction that teaches the merchant memory.
-- **Weekly digest**: per-profile on/off switch, the next scheduled time, and delivery history.
-- **Audit trail**: every run, and every step with its model, tokens and JSON payload.
+The UI (`/`) is a dark "command centre" dashboard with four sections. Every number on it comes from the agents' real output:
+- **Command Center**: a telemetry bar showing the digest schedule, Mesh latency measured per call, and the Verifier's real accepted ÷ drafted rate. The 6-month trajectory hero shows actual balance, the current path with its 80% band, the optimised path with your active interventions applied, the safety buffer and your goal target. Metric cards cover 30-day net flow, fixed burn, subscriptions and a health index with a published formula. **Proactive interventions** are verified recommendations, each with a badge, evidence ids, "inspect evidence", rupee impact, days a goal is brought forward, and an on/off switch (switched-off ones are fed back to the Advisor). Below are the spending donut, Analyzer findings, live pipeline status with per-agent wall time, and the weekly digest.
+- **Simulation Lab**: plain-language what-ifs (Coordinator → Forecaster through Mesh), an instant deterministic scenario builder showing runway before and after, verdict, suggested cuts and a baseline-vs-decision chart, and goals.
+- **Transactions & Ingestion**: drag-and-drop CSV, manual entry, a "who labelled it" bar (llm / recheck / memory / user / fallback), recurring commitments, and category correction that teaches the merchant memory.
+- **Agent Graph & Audit**: the LangGraph diagram lights up live and can replay a trace, with per-agent calls, tokens, latency and wall time, the self-evaluation table from `eval/results.json`, the live execution stream, and the full decision trail per run.
 
 ## What it does
 
@@ -72,7 +70,7 @@ START → coordinator ──(uncategorised rows?)──► categorizer ─┐
 2. **The verifier is a real loop, not a formality.** It's rule-based on purpose: a second LLM agreeing with the first proves little, but "you claimed ₹5,000/month while P3 shows ₹299" is a fact. `tests/test_agents.py::test_pipeline_advisor_verifier_loop_iterates` proves the graph loops.
 3. **Anomalies are judged against the merchant's own history.** A ₹2,000 fuel fill-up isn't unusual for "transport" just because cab rides cost ₹300. This raised anomaly precision on the synthetic data from 18% to 100% (see `eval/`).
 4. **One-off anomalies are kept out of the forecast baseline.** Without this, a single ₹35k laptop made the forecast worse than a naive "same as last month" guess.
-5. **Failures are visible.** If Mesh fails (outage, no balance), the categorizer falls back to keyword rules, marked `category_source=fallback`, and the error is written to the decision trail. Nothing pretends the LLM ran.
+5. **Failures are visible, and they don't cascade.** A circuit breaker in `finpilot/llm.py` stops calling Mesh for 60 seconds after a billing or auth error (401, 402 or 403). If Mesh fails (outage, no balance), the categorizer falls back to keyword rules, marked `category_source=fallback`, and the error is written to the decision trail. Nothing pretends the LLM ran.
 
 ## Self-evaluation
 

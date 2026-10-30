@@ -3,6 +3,7 @@
 Every /api request is scoped to one profile (Priya, Aarav, Sharma family, or the user's own data),
 chosen by the `X-Profile` header; each profile has its own SQLite database.
 """
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -95,6 +96,15 @@ def index(request: Request):
 def health():
     return {"status": "ok", "llm_configured": llm.available(), "model_fast": config.MODEL_FAST,
             "model_smart": config.MODEL_SMART, "next_digest": scheduler.next_run()}
+
+
+@app.get("/api/eval")
+def eval_results():
+    """Self-evaluation numbers produced by `python -m eval.run_eval` (committed in eval/results.json)."""
+    path = ROOT.parent / "eval" / "results.json"
+    if not path.exists():
+        raise HTTPException(404, "run `python -m eval.run_eval` first")
+    return json.loads(path.read_text())
 
 
 @app.get("/api/profiles")

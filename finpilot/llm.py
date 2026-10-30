@@ -8,6 +8,10 @@ from openai import APIStatusError, OpenAI
 from finpilot import config, db
 
 _client: OpenAI | None = None
+# Circuit breaker: after a billing/auth failure (401/402/403) stop calling Mesh for a while instead of
+# hammering it with requests that cannot succeed; callers fall back exactly as they do for any failure.
+BREAKER_SECONDS = 60
+_breaker: dict = {"open_until": 0.0, "reason": ""}
 
 
 class LLMUnavailable(RuntimeError):
@@ -41,9 +45,13 @@ def chat_json(system: str, user: str, *, agent: str, run_id: int | None = None, 
               temperature: float = 0.0, retries: int = 2) -> dict:
     """Call the model, require a JSON object back, and record the call in the decision trail."""
     model = model or config.MODEL_FAST
+    if time.monotonic() < _breaker["open_until"]:
+        db.log_decision(run_id, agent, "llm_error", {"error": f"circuit open: {_breaker['reason']}"}, model=model)
+        raise RuntimeError(f"Mesh API circuit open for {agent}: {_breaker['reason']}")
     last_err: Exception | None = None
     for attempt in range(retries + 1):
         try:
+            started = time.perf_counter()
             resp = client().chat.completions.create(
                 model=model,
                 temperature=temperature,
@@ -57,6 +65,7 @@ def chat_json(system: str, user: str, *, agent: str, run_id: int | None = None, 
                 "prompt_chars": len(system) + len(user),
                 "response_preview": content[:600],
                 "tokens": getattr(usage, "total_tokens", None),
+                "latency_ms": round((time.perf_counter() - started) * 1000),
                 "attempt": attempt,
             }, model=model)
             return data
@@ -64,7 +73,10 @@ def chat_json(system: str, user: str, *, agent: str, run_id: int | None = None, 
             raise
         except APIStatusError as e:
             last_err = e
-            if 400 <= e.status_code < 500 and e.status_code != 429:  # auth / billing / bad request: don't retry
+            if e.status_code in (401, 402, 403):  # auth / billing: trip the breaker
+                _breaker.update(open_until=time.monotonic() + BREAKER_SECONDS, reason=f"HTTP {e.status_code}")
+                break
+            if 400 <= e.status_code < 500 and e.status_code != 429:  # bad request: retrying won't help
                 break
             time.sleep(1.5 * (attempt + 1))
         except Exception as e:  # network / parse errors: retry with backoff

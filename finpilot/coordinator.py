@@ -9,7 +9,7 @@ what-if simulator (affordability / decisions) or the Q&A agent (free-form questi
 import contextvars
 import json
 import threading
-from datetime import date
+from datetime import date, datetime
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -180,11 +180,23 @@ def run_status(run_id: int) -> dict:
             a["tokens"] += int(e["detail"].get("tokens") or 0)
         if e["step"] in ("llm_error", "error"):
             a["errors"] += 1
+    # Wall-clock time each agent spent: from the previous agent's last event to this agent's last event.
+    prev_t = datetime.fromisoformat(run["started_at"])
+    for e in events:
+        t = datetime.fromisoformat(e["created_at"])
+        agents[e["agent"]]["duration_ms"] = agents[e["agent"]].get("duration_ms", 0) + \
+            max(0, round((t - prev_t).total_seconds() * 1000))
+        prev_t = t
+    latencies = [e["detail"]["latency_ms"] for e in events if e["step"] == "llm_call" and e["detail"].get("latency_ms")]
     active = events[-1]["agent"] if events and run["status"] == "running" else None
     if active:
         agents[active]["status"] = "running"
+    verify = [e["detail"] for e in events if e["step"] == "verify"]
+    drafted = sum(len(v["accepted"]) + len(v["rejected"]) for v in verify)
     return {**run, "active_agent": active, "agents": agents, "events": events,
-            "tokens_total": sum(a["tokens"] for a in agents.values())}
+            "tokens_total": sum(a["tokens"] for a in agents.values()),
+            "llm_calls": len(latencies), "avg_latency_ms": round(sum(latencies) / len(latencies)) if latencies else None,
+            "verified_drafts": sum(len(v["accepted"]) for v in verify), "total_drafts": drafted}
 
 
 def _latest_state() -> dict:
