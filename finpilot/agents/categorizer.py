@@ -45,7 +45,10 @@ _NOISE = re.compile(r"[^a-z ]+")
 _HANDLE = re.compile(r"[\w.]+@[\w.]+")
 _CARD = re.compile(r"\b\d*x{4,}\d*\b")
 _STOP = {"pvt", "ltd", "india", "payment", "ref", "txn", "upi", "pos", "pm", "ybl", "com", "in",
-         "blr", "bangalore", "bengaluru", "mumbai", "delhi", "to", "by", "from", "the", "cr", "dr", "ach", "tp", "hdfc", "marketplace"}
+         "blr", "bangalore", "bengaluru", "mumbai", "delhi", "to", "by", "from", "the", "cr", "dr", "ach", "tp", "hdfc", "marketplace",
+         # SBI-style narration words and city names that say nothing about the merchant
+         "transfer", "imps", "neft", "rtgs", "debit", "achdr", "food", "chennai", "pune", "hyderabad",
+         "kolkata", "noida", "gurgaon", "gurugram"}
 
 
 def merchant_key(description: str) -> str:

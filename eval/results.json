@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-30T12:06:55",
+  "generated_at": "2026-10-30T13:30:25",
   "models": {
     "fast": "openai/gpt-4.1-mini",
     "smart": "openai/gpt-4.1"

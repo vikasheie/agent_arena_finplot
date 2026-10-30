@@ -108,7 +108,7 @@ Honest caveats:
 
 `pytest` runs 16 tests with a fake LLM, so the loops, the guards and the delivery channels are proven without spending credits.
 
-**Try your own data:** `data/samples/neha_hdfc_may-oct-2026.csv` is a separate 6-month statement in an HDFC-style export layout (`Date, Narration, Withdrawal Amt., Deposit Amt.`, dates dd/mm/yyyy). Pick **My data** and drop it on the upload card. It contains a ₹42,999 Croma purchase and a ₹4,600 Zomato order as anomalies, plus food delivery that rises every month.
+**Try your own data:** `data/samples/neha_hdfc_may-oct-2026.csv` is a separate 6-month statement in an HDFC-style export layout (`Date, Narration, Withdrawal Amt., Deposit Amt.`, dates dd/mm/yyyy). Pick **My data** and drop it on the upload card. It contains a ₹42,999 Croma purchase and a ₹4,600 Zomato order as anomalies, plus food delivery that rises every month. `data/samples/kiran_sbi_aug-oct-2026.csv` is a smaller 50-row, 3-month statement in an SBI-style layout (`Txn Date, Description, Debit, Credit`, dates like "01 Aug 2026"), with a ₹54,990 electronics anomaly, a refund, a rising electricity bill and growing food delivery.
 
 ## Run it
 

@@ -1,6 +1,6 @@
 # FinPilot self-evaluation results
 
-Generated 2026-10-30T12:06:55 · models `openai/gpt-4.1-mini` / `openai/gpt-4.1` · LLM used: False
+Generated 2026-10-30T13:30:25 · models `openai/gpt-4.1-mini` / `openai/gpt-4.1` · LLM used: False
 
 ## Categorisation accuracy
 
