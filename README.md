@@ -106,6 +106,8 @@ Honest caveats:
 
 `pytest` runs 8 tests with a fake LLM, so the loops are proven without spending credits.
 
+**Try your own data:** `data/samples/neha_hdfc_may-oct-2026.csv` is a separate 6-month statement in an HDFC-style export layout (`Date, Narration, Withdrawal Amt., Deposit Amt.`, dates dd/mm/yyyy). Pick **My data** and drop it on the upload card. It contains a ₹42,999 Croma purchase and a ₹4,600 Zomato order as anomalies, plus food delivery that rises every month.
+
 ## Run it
 
 ```bash

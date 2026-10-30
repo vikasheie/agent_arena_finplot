@@ -344,7 +344,7 @@ const inrShort = v => { const a = Math.abs(v), s = v < 0 ? "−" : ""; return a 
 const mon = m => new Date(+m.slice(0, 4), +m.slice(5, 7) - 1, 1).toLocaleString("en-IN", {month: "short"});
 const monY = m => mon(m) + " " + m.slice(0, 4);
 const dshort = d => new Date(d).toLocaleString("en-IN", {month: "short", day: "2-digit"});
-const merchant = desc => { let d = desc.replace(/^(UPI[\/-](P2M[\/-]\d+[\/-])?|POS |DEBIT CARD |ACH D |NEFT CR |NEFT DPS |NEFT |IMPS CR |IMPS |BY TRANSFER-)/i, ""); d = d.replace(/[\/*-]?\d{5,}.*$/, "").replace(/@\w+$/, "").replace(/[\/*-]+$/, "").replace(/\b(BLR|PVT|LTD)\b/gi, "").trim(); return d.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()).replace(/\s+/g, " ") || desc; };
+const merchant = desc => { let d = desc.replace(/[\w.]+@[\w.]+/g, "").replace(/\b\d*X{4,}\d*\b/gi, "").replace(/^(ACH D-\s*(TP ACH )?|IMPS-\d+-|UPI-)/i, "").replace(/-\d{6,}.*$/, "").replace(/-+\s*$/, "").trim(); d = d.replace(/^(UPI[\/-](P2M[\/-]\d+[\/-])?|POS |DEBIT CARD |ACH D |NEFT CR |NEFT DPS |NEFT |IMPS CR |IMPS |BY TRANSFER-)/i, ""); d = d.replace(/[\/*-]?\d{5,}.*$/, "").replace(/@\w+$/, "").replace(/[\/*-]+$/, "").replace(/\b(BLR|PVT|LTD)\b/gi, "").trim(); return d.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()).replace(/\s+/g, " ") || desc; };
 const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 const S = { profile: store.get("fp-profile") || "priya", profiles: [], txs: [], overview: null, insights: null, status: null, goals: [], digests: null, evals: null,
   stage: -1, reached: -1, playing: true, speed: 1, mode: "auto", timer: null, polling: null, seen: 0, auditRun: null };

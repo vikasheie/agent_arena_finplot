@@ -1,14 +1,14 @@
 # FinPilot self-evaluation results
 
-Generated 2026-10-30T10:55:19 · models `openai/gpt-4.1-mini` / `openai/gpt-4.1` · LLM used: False
+Generated 2026-10-30T12:06:55 · models `openai/gpt-4.1-mini` / `openai/gpt-4.1` · LLM used: False
 
 ## Categorisation accuracy
 
 | Dataset | n | Keyword baseline | LLM agent (Mesh) | LLM macro-F1 |
 |---|---|---|---|---|
-| Held-out, 74 hand-labelled, unseen merchants | 74 | 36.5% | n/a | n/a |
+| Held-out, 74 hand-labelled, unseen merchants | 74 | 37.8% | n/a | n/a |
 | Persona: priya | 360 | 97.8% | n/a | n/a |
-| Persona: aarav | 317 | 68.5% | n/a | n/a |
+| Persona: aarav | 317 | 70.7% | n/a | n/a |
 | Persona: sharma | 270 | 76.7% | n/a | n/a |
 
 ## Anomaly detection (injected anomalies)

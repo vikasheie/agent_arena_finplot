@@ -38,15 +38,22 @@ CATEGORY_GUIDE = {
 
 _PREFIX = re.compile(r"^(upi|pos|neft|imps|ach|nach|debit card|card)[\s/:-]+", re.I)
 _NOISE = re.compile(r"[^a-z ]+")
+_HANDLE = re.compile(r"[\w.]+@[\w.]+")
+_CARD = re.compile(r"\b\d*x{4,}\d*\b")
 _STOP = {"pvt", "ltd", "india", "payment", "ref", "txn", "upi", "pos", "pm", "ybl", "com", "in",
-         "blr", "bangalore", "bengaluru", "mumbai", "delhi", "to", "by", "from", "the", "cr", "dr"}
+         "blr", "bangalore", "bengaluru", "mumbai", "delhi", "to", "by", "from", "the", "cr", "dr", "ach", "tp", "hdfc", "marketplace"}
 
 
 def merchant_key(description: str) -> str:
     """Normalise a raw bank description to a stable merchant key ("UPI/SWIGGY*1234" -> "swiggy")."""
     d = _PREFIX.sub("", description.strip().lower())
+    d = _HANDLE.sub(" ", d)    # UPI handles like "spotify@hdfcbank", "mother@okaxis"
+    d = _CARD.sub(" ", d)      # masked card numbers like "4xxxxxxx1234"
     d = _NOISE.sub(" ", d)
-    tokens = [t for t in d.split() if len(t) > 1 and t not in _STOP]
+    tokens = []
+    for t in d.split():
+        if len(t) > 1 and t not in _STOP and t not in tokens:
+            tokens.append(t)
     return " ".join(tokens[:2]) or description.strip().lower()
 
 

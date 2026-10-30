@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-30T10:55:19",
+  "generated_at": "2026-10-30T12:06:55",
   "models": {
     "fast": "openai/gpt-4.1-mini",
     "smart": "openai/gpt-4.1"
@@ -8,8 +8,8 @@
   "categorization": {
     "heldout": {
       "keyword_baseline": {
-        "accuracy": 0.3649,
-        "macro_f1": 0.4515,
+        "accuracy": 0.3784,
+        "macro_f1": 0.4749,
         "n": 74,
         "per_category": {
           "dining": {
@@ -38,8 +38,8 @@
           },
           "income": {
             "precision": 1.0,
-            "recall": 0.25,
-            "f1": 0.4,
+            "recall": 0.5,
+            "f1": 0.667,
             "support": 4
           },
           "other": {
@@ -67,9 +67,9 @@
             "support": 8
           },
           "transfers": {
-            "precision": 0.429,
+            "precision": 0.5,
             "recall": 0.5,
-            "f1": 0.462,
+            "f1": 0.5,
             "support": 6
           },
           "transport": {
@@ -113,15 +113,15 @@
             5
           ],
           [
-            "income -> transfers",
-            3
-          ],
-          [
             "utilities -> other",
             3
           ],
           [
             "entertainment -> other",
+            3
+          ],
+          [
+            "health -> other",
             3
           ]
         ],
@@ -240,8 +240,8 @@
     },
     "aarav": {
       "keyword_baseline": {
-        "accuracy": 0.6845,
-        "macro_f1": 0.8185,
+        "accuracy": 0.7066,
+        "macro_f1": 0.8912,
         "n": 317,
         "per_category": {
           "dining": {
@@ -270,8 +270,8 @@
           },
           "income": {
             "precision": 1.0,
-            "recall": 0.5,
-            "f1": 0.667,
+            "recall": 1.0,
+            "f1": 1.0,
             "support": 14
           },
           "rent": {
@@ -293,9 +293,9 @@
             "support": 28
           },
           "transfers": {
-            "precision": 0.364,
+            "precision": 1.0,
             "recall": 1.0,
-            "f1": 0.533,
+            "f1": 1.0,
             "support": 4
           },
           "transport": {
@@ -327,10 +327,6 @@
           [
             "entertainment -> other",
             9
-          ],
-          [
-            "income -> transfers",
-            7
           ],
           [
             "shopping -> other",
