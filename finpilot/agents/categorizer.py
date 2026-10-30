@@ -21,6 +21,7 @@ MAX_RECHECK_ROUNDS = 2
 CATEGORY_GUIDE = {
     "income": "salary, freelance payments, interest, refunds of income type (money in)",
     "rent": "house rent, PG, maintenance paid to landlord/society",
+    "emi": "loan EMIs: home loan, car loan, personal loan, consumer-durable EMI",
     "groceries": "supermarkets, kirana, vegetables, grocery delivery (BigBasket, Blinkit, Zepto)",
     "dining": "restaurants, cafes, food delivery (Swiggy, Zomato)",
     "transport": "fuel, cabs (Uber, Ola, Rapido), metro, parking, tolls",
@@ -29,6 +30,7 @@ CATEGORY_GUIDE = {
     "shopping": "e-commerce and retail (Amazon, Flipkart, Myntra), electronics, clothes",
     "entertainment": "movies, events, gaming, BookMyShow",
     "health": "pharmacy, doctor, hospital, insurance premium",
+    "education": "school/college fees, tuition, courses, books for study",
     "travel": "flights, trains, hotels, holiday bookings",
     "transfers": "transfers to self/friends/family, credit card bill payment, investments, ATM cash",
     "other": "anything that clearly fits none of the above",
@@ -37,7 +39,7 @@ CATEGORY_GUIDE = {
 _PREFIX = re.compile(r"^(upi|pos|neft|imps|ach|nach|debit card|card)[\s/:-]+", re.I)
 _NOISE = re.compile(r"[^a-z ]+")
 _STOP = {"pvt", "ltd", "india", "payment", "ref", "txn", "upi", "pos", "pm", "ybl", "com", "in",
-         "blr", "bangalore", "bengaluru", "mumbai", "delhi"}
+         "blr", "bangalore", "bengaluru", "mumbai", "delhi", "to", "by", "from", "the", "cr", "dr"}
 
 
 def merchant_key(description: str) -> str:
@@ -55,7 +57,9 @@ def _fallback_category(tx: dict) -> tuple[str, float]:
         return ("income", 0.6) if any(k in text for k in ("salary", "payroll", "freelance", "interest")) \
             else ("transfers", 0.4)
     for cat, keys in {
-        "rent": ("rent", "landlord", "society"),
+        "emi": ("emi", "loan"),
+        "rent": ("rent", "landlord", "society", " pg"),
+        "education": ("school", "tuition", "fees", "course", "byjus"),
         "groceries": ("bigbasket", "blinkit", "zepto", "dmart", "grocery", "kirana", "more retail"),
         "dining": ("swiggy", "zomato", "cafe", "restaurant", "starbucks", "dominos", "kfc"),
         "transport": ("uber", "ola", "rapido", "fuel", "petrol", "metro", "fastag"),
@@ -67,7 +71,7 @@ def _fallback_category(tx: dict) -> tuple[str, float]:
         "travel": ("indigo", "irctc", "makemytrip", "airbnb", "oyo", "goibibo"),
         "transfers": ("transfer", "atm", "cred", "zerodha", "groww", "sip"),
     }.items():
-        if any(k in text for k in keys):
+        if any(re.search(rf"\b{re.escape(k.strip())}\b", text) for k in keys):
             return cat, 0.5
     return "other", 0.2
 

@@ -1,23 +1,33 @@
-"""FastAPI app: REST API + a single-page UI. Run with `uvicorn finpilot.main:app --reload`."""
+"""FastAPI app: REST API + a single-page UI. Run with `uvicorn finpilot.main:app --reload`.
+
+Every /api request is scoped to one profile (Priya, Aarav, Sharma family, or the user's own data),
+chosen by the `X-Profile` header; each profile has its own SQLite database.
+"""
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from finpilot import config, coordinator, db, ingest, llm, scheduler
+from finpilot import config, coordinator, db, ingest, llm, profiles, scheduler
 from finpilot.agents import categorizer, forecaster
 
 ROOT = Path(__file__).resolve().parent
-SAMPLE_CSV = ROOT.parent / "data" / "sample_transactions.csv"
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    db.init_db()
+    for pid in profiles.PROFILES:  # create every profile DB and seed the personas on first start
+        profiles.activate(pid)
+        if pid != "me" and not db.all_transactions():
+            try:
+                profiles.load_seed(pid)
+            except FileNotFoundError:
+                pass
+    db.current_db.set(None)
     scheduler.start()
     yield
     scheduler.shutdown()
@@ -26,9 +36,21 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="FinPilot", description="Proactive multi-agent financial copilot", lifespan=lifespan)
 
 
+async def use_profile(x_profile: str = Header(profiles.DEFAULT)) -> str:
+    # async on purpose: the contextvar set here is copied into the threadpool that runs the sync endpoint
+    try:
+        profiles.activate(x_profile)
+    except KeyError:
+        raise HTTPException(404, f"unknown profile '{x_profile}'")
+    return x_profile
+
+
+api = APIRouter(prefix="/api", dependencies=[Depends(use_profile)])
+
+
 class ManualTx(BaseModel):
     date: str
-    description: str
+    description: str = Field(min_length=1)
     amount: float = Field(gt=0)
     kind: str = Field("expense", pattern="^(expense|income)$")
 
@@ -60,6 +82,10 @@ class Balance(BaseModel):
     opening_balance: float
 
 
+class Toggle(BaseModel):
+    enabled: bool
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {"categories": config.CATEGORIES})
@@ -71,7 +97,35 @@ def health():
             "model_smart": config.MODEL_SMART, "next_digest": scheduler.next_run()}
 
 
-@app.post("/api/transactions/upload")
+@app.get("/api/profiles")
+def list_profiles():
+    return [profiles.summary(pid) for pid in profiles.PROFILES]
+
+
+@api.post("/profile/reset")
+def reset_profile(profile: str = Depends(use_profile)):
+    if profile == "me":
+        db.reset()
+        return {"inserted": 0}
+    return {"inserted": profiles.load_seed(profile)}
+
+
+@api.get("/overview")
+def overview():
+    txs = db.all_transactions()
+    latest = db.latest_run("pipeline")
+    with db.connect() as conn:
+        running = conn.execute("SELECT id FROM runs WHERE kind = 'pipeline' AND status = 'running' "
+                               "ORDER BY id DESC LIMIT 1").fetchone()
+    return {"transactions": len(txs), "uncategorized": sum(1 for t in txs if not t["category"]),
+            "first_date": txs[0]["date"] if txs else None, "last_date": txs[-1]["date"] if txs else None,
+            "opening_balance": float(db.get_setting("opening_balance", "0") or 0),
+            "digest_enabled": scheduler.digest_enabled(),
+            "running_run_id": running["id"] if running else None,
+            "latest_run_id": latest["id"] if latest else None}
+
+
+@api.post("/transactions/upload")
 async def upload(file: UploadFile = File(...)):
     try:
         ids = ingest.ingest_csv((await file.read()).decode("utf-8", errors="replace"))
@@ -80,7 +134,7 @@ async def upload(file: UploadFile = File(...)):
     return {"inserted": len(ids)}
 
 
-@app.post("/api/transactions")
+@api.post("/transactions")
 def add_tx(tx: ManualTx):
     try:
         tx_id = ingest.ingest_manual(tx.date, tx.description, tx.amount, tx.kind)
@@ -90,12 +144,12 @@ def add_tx(tx: ManualTx):
     return {"id": tx_id, "categorization": stats}
 
 
-@app.get("/api/transactions")
+@api.get("/transactions")
 def list_tx():
     return db.all_transactions()
 
 
-@app.post("/api/transactions/{tx_id}/category")
+@api.post("/transactions/{tx_id}/category")
 def correct(tx_id: int, body: Correction):
     try:
         categorizer.correct(tx_id, body.category)
@@ -104,30 +158,28 @@ def correct(tx_id: int, body: Correction):
     return {"ok": True}
 
 
-@app.post("/api/demo/load")
-def load_demo():
-    if not SAMPLE_CSV.exists():
-        raise HTTPException(404, "run `python -m eval.generate_data` first")
-    db.reset()
-    db.set_setting("opening_balance", "50000")
-    ids = ingest.ingest_csv(SAMPLE_CSV.read_text())
-    return {"inserted": len(ids), "opening_balance": 50000}
-
-
-@app.post("/api/settings/opening-balance")
+@api.post("/settings/opening-balance")
 def set_balance(body: Balance):
     db.set_setting("opening_balance", str(body.opening_balance))
     return {"ok": True}
 
 
-@app.post("/api/run")
+@api.post("/run")
 def run():
     if not db.all_transactions():
         raise HTTPException(400, "no transactions yet")
-    return coordinator.run_pipeline()
+    return {"run_id": coordinator.start_pipeline()}
 
 
-@app.get("/api/insights")
+@api.get("/runs/{run_id}")
+def run_status(run_id: int):
+    status = coordinator.run_status(run_id)
+    if not status:
+        raise HTTPException(404, "run not found")
+    return status
+
+
+@api.get("/insights")
 def insights():
     latest = db.latest_run("pipeline")
     if not latest:
@@ -136,7 +188,13 @@ def insights():
             "recommendations": db.recommendations(latest["id"])}
 
 
-@app.post("/api/ask")
+@api.post("/recommendations/{rec_id}/toggle")
+def toggle_rec(rec_id: int, body: Toggle):
+    db.set_recommendation_state(rec_id, "active" if body.enabled else "dismissed")
+    return {"ok": True}
+
+
+@api.post("/ask")
 def ask(q: Question):
     try:
         return coordinator.ask(q.question)
@@ -146,7 +204,7 @@ def ask(q: Question):
         raise HTTPException(502, str(e))
 
 
-@app.post("/api/simulate")
+@api.post("/simulate")
 def simulate(d: Decision):
     fc = forecaster.forecast()
     if "error" in fc:
@@ -154,22 +212,28 @@ def simulate(d: Decision):
     return forecaster.simulate(fc, d.model_dump(exclude_none=True))
 
 
-@app.get("/api/trail/{run_id}")
+@api.get("/trail/{run_id}")
 def trail(run_id: int):
     return db.trail(run_id)
 
 
-@app.post("/api/goals")
+@api.post("/goals")
 def add_goal(g: Goal):
     return {"id": db.add_goal(g.name, g.target_amount, ingest.parse_date(g.target_date), g.saved_so_far)}
 
 
-@app.get("/api/goals")
+@api.get("/goals")
 def list_goals():
     return db.goals()
 
 
-@app.post("/api/digest/run-now")
+@api.post("/digest/toggle")
+def toggle_digest(body: Toggle):
+    db.set_setting("digest_enabled", "1" if body.enabled else "0")
+    return {"enabled": body.enabled}
+
+
+@api.post("/digest/run-now")
 def digest_now():
     try:
         d = scheduler.digest_job()
@@ -180,6 +244,16 @@ def digest_now():
     return d
 
 
-@app.get("/api/digests")
+@api.get("/digests")
 def list_digests():
-    return {"next_scheduled": scheduler.next_run(), "digests": db.digests()}
+    return {"next_scheduled": scheduler.next_run(), "enabled": scheduler.digest_enabled(), "digests": db.digests()}
+
+
+@api.get("/runs")
+def list_runs():
+    with db.connect() as conn:
+        rows = conn.execute("SELECT id, kind, status, started_at FROM runs ORDER BY id DESC LIMIT 30").fetchall()
+    return [dict(r) for r in rows]
+
+
+app.include_router(api)

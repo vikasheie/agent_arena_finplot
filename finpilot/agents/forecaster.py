@@ -11,12 +11,12 @@ import statistics
 from collections import defaultdict
 from datetime import date
 
-from finpilot import db
+from finpilot import config, db
 from finpilot.agents.analyzer import detect_anomalies, detect_recurring
 
 AGENT = "forecaster"
 WEIGHTS = [0.5, 0.3, 0.2]  # most recent month first
-ESSENTIAL = {"rent", "groceries", "utilities", "transport", "health"}
+ESSENTIAL = {"rent", "emi", "groceries", "utilities", "transport", "health", "education"}
 
 
 def _add_months(ym: str, n: int) -> str:
@@ -56,9 +56,25 @@ def project(txs: list[dict], horizon: int = 6, opening_balance: float = 0.0) -> 
     recurring_ids = {i for r in recurring for i in r["tx_ids"]}
     # One-off anomalies (a laptop, a hospital bill) are not expected to repeat: keep them out of the baseline.
     one_off_ids = {a["tx_id"] for a in detect_anomalies(in_scope)}
-    # Only recurring items still active in the last full month are projected forward.
-    active = [r for r in recurring if r["last_date"][:7] >= months[-1]]
-    fixed = sum(r["monthly_amount"] for r in active)
+    # Only recurring items still active at the end of the data are projected forward.
+    end = date.fromisoformat(max(t["date"] for t in in_scope))
+    active = [r for r in recurring
+              if (end - date.fromisoformat(r["last_date"])).days <= (45 if r["cadence"] == "monthly" else 100)]
+    monthly_items = [r for r in active if r["cadence"] == "monthly"]
+    quarterly_items = [r for r in active if r["cadence"] == "quarterly"]
+    fixed_monthly = sum(r["monthly_amount"] for r in monthly_items)
+    fixed = fixed_monthly + sum(r["monthly_amount"] for r in quarterly_items)  # average monthly equivalent
+
+    def scheduled_for(month: str) -> float:
+        """Quarterly bills land in full in the month they fall due, not smeared across months."""
+        due = 0.0
+        for r in quarterly_items:
+            k = 1
+            while _add_months(r["last_date"][:7], 3 * k) < month:
+                k += 1
+            if _add_months(r["last_date"][:7], 3 * k) == month:
+                due += r["amount"]
+        return due
 
     var_by_m_cat: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     for t in in_scope:
@@ -82,9 +98,11 @@ def project(txs: list[dict], horizon: int = 6, opening_balance: float = 0.0) -> 
         first_fraction = max(0.0, 1 - int(last_day[8:10]) / 30)
     path, bal = [], balance
     for i in range(1, horizon + 1):
-        net = (income - fixed - variable) * (first_fraction if i == 1 else 1.0)
+        month = _add_months(months[-1], i)
+        fixed_m = fixed_monthly + scheduled_for(month)
+        net = (income - fixed_m - variable) * (first_fraction if i == 1 else 1.0)
         bal += net
-        path.append({"month": _add_months(months[-1], i), "income": round(income, 2), "fixed": round(fixed, 2),
+        path.append({"month": month, "income": round(income, 2), "fixed": round(fixed_m, 2),
                      "variable": round(variable, 2), "net": round(net, 2), "balance": round(bal, 2),
                      "low": round(bal - 1.28 * sigma * (i ** 0.5), 2),
                      "high": round(bal + 1.28 * sigma * (i ** 0.5), 2)})
@@ -99,8 +117,8 @@ def project(txs: list[dict], horizon: int = 6, opening_balance: float = 0.0) -> 
         "monthly_fixed": round(fixed, 2),
         "monthly_variable": round(variable, 2),
         "variable_by_category": variable_by_cat,
-        "fixed_items": [{"description": r["description"], "amount": r["monthly_amount"], "category": r["category"]}
-                        for r in active],
+        "fixed_items": [{"description": r["description"], "amount": r["amount"], "cadence": r["cadence"],
+                         "monthly_amount": r["monthly_amount"], "category": r["category"]} for r in active],
         "monthly_net": round(income - fixed - variable, 2),
         "safety_buffer": round(essential, 2),
         "sigma_variable": round(sigma, 2),
@@ -122,10 +140,10 @@ def backtest(txs: list[dict], min_train_months: int = 3) -> dict:
         actual_spend = sum(-t["amount"] for t in txs if t["date"][:7] == months[k] and t["amount"] < 0)
         actual_income = sum(t["amount"] for t in txs
                             if t["date"][:7] == months[k] and t["amount"] > 0 and t["category"] == "income")
-        pred_spend = fc["monthly_fixed"] + fc["monthly_variable"]
+        pred_spend = fc["path"][0]["fixed"] + fc["monthly_variable"]
         rows.append({"month": months[k], "predicted_spend": round(pred_spend, 2), "actual_spend": round(actual_spend, 2),
                      "abs_pct_error": round(100 * abs(pred_spend - actual_spend) / max(actual_spend, 1), 2),
-                     "predicted_net": fc["monthly_net"], "actual_net": round(actual_income - actual_spend, 2)})
+                     "predicted_net": fc["path"][0]["net"], "actual_net": round(actual_income - actual_spend, 2)})
     if not rows:
         return {"error": "not enough history to backtest", "rows": []}
     return {"rows": rows, "mape_spend_pct": round(statistics.mean(r["abs_pct_error"] for r in rows), 2),
@@ -168,7 +186,7 @@ def simulate(fc: dict, decision: dict) -> dict:
     cuts, remaining = [], shortfall
     months_avail = max(1, offset if kind == "purchase" else len(path))
     for c, v in sorted(fc["variable_by_category"].items(), key=lambda kv: -kv[1]):
-        if remaining <= 0 or c in ESSENTIAL:
+        if remaining <= 0 or c not in config.DISCRETIONARY:
             continue
         cut = min(v * 0.3, remaining / months_avail)
         if cut > 0:

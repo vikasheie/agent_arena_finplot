@@ -1,320 +1,755 @@
 {
-  "generated_at": "2026-10-30T10:24:21",
+  "generated_at": "2026-10-30T10:55:19",
   "models": {
     "fast": "openai/gpt-4.1-mini",
     "smart": "openai/gpt-4.1"
   },
   "llm_used": false,
-  "categorization_heldout": {
-    "keyword_baseline": {
-      "accuracy": 0.3514,
-      "macro_f1": 0.4291,
-      "n": 74,
-      "per_category": {
-        "dining": {
-          "precision": 1.0,
-          "recall": 0.143,
-          "f1": 0.25,
-          "support": 7
+  "categorization": {
+    "heldout": {
+      "keyword_baseline": {
+        "accuracy": 0.3649,
+        "macro_f1": 0.4515,
+        "n": 74,
+        "per_category": {
+          "dining": {
+            "precision": 1.0,
+            "recall": 0.143,
+            "f1": 0.25,
+            "support": 7
+          },
+          "entertainment": {
+            "precision": 1.0,
+            "recall": 0.4,
+            "f1": 0.571,
+            "support": 5
+          },
+          "groceries": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 6
+          },
+          "health": {
+            "precision": 1.0,
+            "recall": 0.5,
+            "f1": 0.667,
+            "support": 6
+          },
+          "income": {
+            "precision": 1.0,
+            "recall": 0.25,
+            "f1": 0.4,
+            "support": 4
+          },
+          "other": {
+            "precision": 0.044,
+            "recall": 1.0,
+            "f1": 0.085,
+            "support": 2
+          },
+          "rent": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 4
+          },
+          "shopping": {
+            "precision": 1.0,
+            "recall": 0.125,
+            "f1": 0.222,
+            "support": 8
+          },
+          "subscriptions": {
+            "precision": 1.0,
+            "recall": 0.375,
+            "f1": 0.545,
+            "support": 8
+          },
+          "transfers": {
+            "precision": 0.429,
+            "recall": 0.5,
+            "f1": 0.462,
+            "support": 6
+          },
+          "transport": {
+            "precision": 1.0,
+            "recall": 0.143,
+            "f1": 0.25,
+            "support": 7
+          },
+          "travel": {
+            "precision": 1.0,
+            "recall": 0.6,
+            "f1": 0.75,
+            "support": 5
+          },
+          "utilities": {
+            "precision": 1.0,
+            "recall": 0.5,
+            "f1": 0.667,
+            "support": 6
+          }
         },
-        "entertainment": {
-          "precision": 1.0,
-          "recall": 0.4,
-          "f1": 0.571,
-          "support": 5
-        },
-        "groceries": {
-          "precision": 0.0,
-          "recall": 0.0,
-          "f1": 0.0,
-          "support": 6
-        },
-        "health": {
-          "precision": 1.0,
-          "recall": 0.5,
-          "f1": 0.667,
-          "support": 6
-        },
-        "income": {
-          "precision": 1.0,
-          "recall": 0.25,
-          "f1": 0.4,
-          "support": 4
-        },
-        "other": {
-          "precision": 0.045,
-          "recall": 1.0,
-          "f1": 0.087,
-          "support": 2
-        },
-        "rent": {
-          "precision": 1.0,
-          "recall": 0.75,
-          "f1": 0.857,
-          "support": 4
-        },
-        "shopping": {
-          "precision": 0.0,
-          "recall": 0.0,
-          "f1": 0.0,
-          "support": 8
-        },
-        "subscriptions": {
-          "precision": 1.0,
-          "recall": 0.375,
-          "f1": 0.545,
-          "support": 8
-        },
-        "transfers": {
-          "precision": 0.429,
-          "recall": 0.5,
-          "f1": 0.462,
-          "support": 6
-        },
-        "transport": {
-          "precision": 1.0,
-          "recall": 0.286,
-          "f1": 0.444,
-          "support": 7
-        },
-        "travel": {
-          "precision": 1.0,
-          "recall": 0.6,
-          "f1": 0.75,
-          "support": 5
-        },
-        "utilities": {
-          "precision": 0.6,
-          "recall": 0.5,
-          "f1": 0.545,
-          "support": 6
-        }
-      },
-      "top_confusions": [
-        [
-          "dining -> other",
-          6
+        "top_confusions": [
+          [
+            "groceries -> other",
+            6
+          ],
+          [
+            "dining -> other",
+            6
+          ],
+          [
+            "transport -> other",
+            6
+          ],
+          [
+            "shopping -> other",
+            6
+          ],
+          [
+            "subscriptions -> other",
+            5
+          ],
+          [
+            "income -> transfers",
+            3
+          ],
+          [
+            "utilities -> other",
+            3
+          ],
+          [
+            "entertainment -> other",
+            3
+          ]
         ],
-        [
-          "shopping -> other",
-          6
+        "sources": {
+          "total": 74,
+          "memory": 0,
+          "llm": 0,
+          "llm_recheck": 0,
+          "fallback": 74
+        },
+        "recheck_rounds": []
+      }
+    },
+    "priya": {
+      "keyword_baseline": {
+        "accuracy": 0.9778,
+        "macro_f1": 0.9896,
+        "n": 360,
+        "per_category": {
+          "dining": {
+            "precision": 1.0,
+            "recall": 0.966,
+            "f1": 0.983,
+            "support": 89
+          },
+          "entertainment": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 10
+          },
+          "groceries": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 59
+          },
+          "health": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 9
+          },
+          "income": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 7
+          },
+          "rent": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 7
+          },
+          "shopping": {
+            "precision": 1.0,
+            "recall": 0.962,
+            "f1": 0.98,
+            "support": 26
+          },
+          "subscriptions": {
+            "precision": 1.0,
+            "recall": 0.897,
+            "f1": 0.946,
+            "support": 39
+          },
+          "transfers": {
+            "precision": 0.933,
+            "recall": 1.0,
+            "f1": 0.966,
+            "support": 14
+          },
+          "transport": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 77
+          },
+          "travel": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 2
+          },
+          "utilities": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 21
+          }
+        },
+        "top_confusions": [
+          [
+            "subscriptions -> other",
+            4
+          ],
+          [
+            "dining -> other",
+            3
+          ],
+          [
+            "shopping -> transfers",
+            1
+          ]
         ],
-        [
-          "groceries -> other",
-          5
+        "sources": {
+          "total": 360,
+          "memory": 0,
+          "llm": 0,
+          "llm_recheck": 0,
+          "fallback": 360
+        },
+        "recheck_rounds": []
+      }
+    },
+    "aarav": {
+      "keyword_baseline": {
+        "accuracy": 0.6845,
+        "macro_f1": 0.8185,
+        "n": 317,
+        "per_category": {
+          "dining": {
+            "precision": 1.0,
+            "recall": 0.6,
+            "f1": 0.75,
+            "support": 105
+          },
+          "entertainment": {
+            "precision": 1.0,
+            "recall": 0.438,
+            "f1": 0.609,
+            "support": 16
+          },
+          "groceries": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 29
+          },
+          "health": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 4
+          },
+          "income": {
+            "precision": 1.0,
+            "recall": 0.5,
+            "f1": 0.667,
+            "support": 14
+          },
+          "rent": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 7
+          },
+          "shopping": {
+            "precision": 1.0,
+            "recall": 0.9,
+            "f1": 0.947,
+            "support": 10
+          },
+          "subscriptions": {
+            "precision": 1.0,
+            "recall": 0.5,
+            "f1": 0.667,
+            "support": 28
+          },
+          "transfers": {
+            "precision": 0.364,
+            "recall": 1.0,
+            "f1": 0.533,
+            "support": 4
+          },
+          "transport": {
+            "precision": 1.0,
+            "recall": 0.71,
+            "f1": 0.83,
+            "support": 93
+          },
+          "utilities": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 7
+          }
+        },
+        "top_confusions": [
+          [
+            "dining -> other",
+            42
+          ],
+          [
+            "transport -> other",
+            27
+          ],
+          [
+            "subscriptions -> other",
+            14
+          ],
+          [
+            "entertainment -> other",
+            9
+          ],
+          [
+            "income -> transfers",
+            7
+          ],
+          [
+            "shopping -> other",
+            1
+          ]
         ],
-        [
-          "transport -> other",
-          5
+        "sources": {
+          "total": 317,
+          "memory": 0,
+          "llm": 0,
+          "llm_recheck": 0,
+          "fallback": 317
+        },
+        "recheck_rounds": []
+      }
+    },
+    "sharma": {
+      "keyword_baseline": {
+        "accuracy": 0.7667,
+        "macro_f1": 0.7699,
+        "n": 270,
+        "per_category": {
+          "dining": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 31
+          },
+          "education": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 10
+          },
+          "emi": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 14
+          },
+          "entertainment": {
+            "precision": 1.0,
+            "recall": 0.6,
+            "f1": 0.75,
+            "support": 5
+          },
+          "groceries": {
+            "precision": 1.0,
+            "recall": 0.64,
+            "f1": 0.78,
+            "support": 86
+          },
+          "health": {
+            "precision": 1.0,
+            "recall": 0.533,
+            "f1": 0.696,
+            "support": 15
+          },
+          "income": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 14
+          },
+          "other": {
+            "precision": 0.1,
+            "recall": 1.0,
+            "f1": 0.182,
+            "support": 7
+          },
+          "shopping": {
+            "precision": 1.0,
+            "recall": 0.556,
+            "f1": 0.714,
+            "support": 9
+          },
+          "subscriptions": {
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.857,
+            "support": 28
+          },
+          "transfers": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 7
+          },
+          "transport": {
+            "precision": 1.0,
+            "recall": 0.667,
+            "f1": 0.8,
+            "support": 15
+          },
+          "travel": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 1
+          },
+          "utilities": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 28
+          }
+        },
+        "top_confusions": [
+          [
+            "groceries -> other",
+            31
+          ],
+          [
+            "health -> other",
+            7
+          ],
+          [
+            "subscriptions -> other",
+            7
+          ],
+          [
+            "transfers -> other",
+            7
+          ],
+          [
+            "transport -> other",
+            5
+          ],
+          [
+            "shopping -> other",
+            4
+          ],
+          [
+            "entertainment -> other",
+            2
+          ]
         ],
-        [
-          "subscriptions -> other",
-          5
-        ],
-        [
-          "income -> transfers",
-          3
-        ],
-        [
-          "utilities -> other",
-          3
-        ],
-        [
-          "entertainment -> other",
-          3
-        ]
-      ],
-      "sources": {
-        "total": 74,
-        "memory": 0,
-        "llm": 0,
-        "llm_recheck": 0,
-        "fallback": 74
-      },
-      "recheck_rounds": []
-    }
-  },
-  "categorization_persona": {
-    "keyword_baseline": {
-      "accuracy": 0.9822,
-      "macro_f1": 0.9924,
-      "n": 337,
-      "per_category": {
-        "dining": {
-          "precision": 1.0,
-          "recall": 0.934,
-          "f1": 0.966,
-          "support": 76
+        "sources": {
+          "total": 270,
+          "memory": 0,
+          "llm": 0,
+          "llm_recheck": 0,
+          "fallback": 270
         },
-        "entertainment": {
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "support": 6
-        },
-        "groceries": {
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "support": 68
-        },
-        "health": {
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "support": 6
-        },
-        "income": {
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "support": 10
-        },
-        "rent": {
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "support": 7
-        },
-        "shopping": {
-          "precision": 1.0,
-          "recall": 0.955,
-          "f1": 0.977,
-          "support": 22
-        },
-        "subscriptions": {
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "support": 28
-        },
-        "transfers": {
-          "precision": 0.933,
-          "recall": 1.0,
-          "f1": 0.966,
-          "support": 14
-        },
-        "transport": {
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "support": 77
-        },
-        "travel": {
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "support": 2
-        },
-        "utilities": {
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "support": 21
-        }
-      },
-      "top_confusions": [
-        [
-          "dining -> other",
-          5
-        ],
-        [
-          "shopping -> transfers",
-          1
-        ]
-      ],
-      "sources": {
-        "total": 337,
-        "memory": 0,
-        "llm": 0,
-        "llm_recheck": 0,
-        "fallback": 337
-      },
-      "recheck_rounds": []
+        "recheck_rounds": []
+      }
     }
   },
   "anomalies": {
-    "injected": 4,
-    "flagged": 4,
-    "true_positives": 4,
-    "precision": 1.0,
-    "recall": 1.0,
-    "false_positives": []
+    "priya": {
+      "injected": 3,
+      "flagged": 3,
+      "true_positives": 3,
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_positives": []
+    },
+    "aarav": {
+      "injected": 3,
+      "flagged": 3,
+      "true_positives": 3,
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_positives": []
+    },
+    "sharma": {
+      "injected": 3,
+      "flagged": 3,
+      "true_positives": 3,
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_positives": []
+    }
   },
   "recurring": {
-    "expected": [
-      "airtel",
-      "cultfit",
-      "hotstar",
-      "jio",
-      "mom",
-      "netflix",
-      "rent",
-      "spotify",
-      "zerodha"
-    ],
-    "detected_expected": [
-      "airtel",
-      "cultfit",
-      "hotstar",
-      "jio",
-      "mom",
-      "netflix",
-      "rent",
-      "spotify",
-      "zerodha"
-    ],
-    "recall": 1.0,
-    "total_detected": 9,
-    "detected": [
-      "IMPS RENT TO LANDLORD R KUMAR ~22000.0",
-      "ACH D ZERODHA MUTUAL FUND SIP ~10000.0",
-      "UPI/P2M/109909/TRANSFER TO MOM SAVINGS ~5000.0",
-      "UPI-CULTFIT GYM MEMBERSHIP-831105 ~1499.0",
-      "UPI/AIRTEL BROADBAND/817269@ybl ~799.0",
-      "DEBIT CARD NETFLIX.COM BLR ~649.0",
-      "UPI/P2M/581294/DISNEY HOTSTAR ~299.0",
-      "UPI-JIO PREPAID RECHARGE-495490 ~299.0",
-      "POS SPOTIFY INDIA 933551 ~119.0"
-    ]
+    "priya": {
+      "expected": [
+        "airtel",
+        "chatgpt",
+        "cultfit",
+        "hotstar",
+        "jio",
+        "mom",
+        "netflix",
+        "rent",
+        "spotify",
+        "youtube",
+        "zerodha"
+      ],
+      "detected_expected": [
+        "airtel",
+        "chatgpt",
+        "cultfit",
+        "hotstar",
+        "jio",
+        "mom",
+        "netflix",
+        "rent",
+        "spotify",
+        "youtube",
+        "zerodha"
+      ],
+      "missed": [],
+      "recall": 1.0,
+      "total_detected": 12,
+      "detected": [
+        "IMPS RENT TO LANDLORD R KUMAR ~28000.0",
+        "ACH D ZERODHA MUTUAL FUND SIP ~15000.0",
+        "UPI/TRANSFER TO MOM SAVINGS/482746@ybl ~5000.0",
+        "POS OPENAI CHATGPT SUBSCRIPTION 602278 ~1999.0",
+        "UPI-CULTFIT GYM MEMBERSHIP-242736 ~1499.0",
+        "UPI/P2M/614858/BESCOM ELECTRICITY ~1489.46",
+        "UPI/P2M/405605/AIRTEL BROADBAND ~799.0",
+        "NETFLIX.COM*448354 ~649.0",
+        "UPI/P2M/551533/DISNEY HOTSTAR ~299.0",
+        "UPI-JIO PREPAID RECHARGE-494322 ~299.0",
+        "POS YOUTUBE PREMIUM GOOGLE 732512 ~149.0",
+        "DEBIT CARD SPOTIFY INDIA BLR ~119.0"
+      ]
+    },
+    "aarav": {
+      "expected": [
+        "adobe",
+        "jio",
+        "netflix",
+        "spotify",
+        "stanza",
+        "xbox"
+      ],
+      "detected_expected": [
+        "adobe",
+        "jio",
+        "netflix",
+        "spotify",
+        "stanza",
+        "xbox"
+      ],
+      "missed": [],
+      "recall": 1.0,
+      "total_detected": 6,
+      "detected": [
+        "UPI-STANZA LIVING PG RENT-585052 ~12000.0",
+        "POS ADOBE CREATIVE CLOUD 290481 ~1675.0",
+        "XBOX GAME PASS*738495 ~549.0",
+        "UPI/P2M/141941/JIO POSTPAID BILL ~399.0",
+        "NETFLIX.COM*847201 ~199.0",
+        "POS SPOTIFY INDIA 469217 ~119.0"
+      ]
+    },
+    "sharma": {
+      "expected": [
+        "act fibernet",
+        "byjus",
+        "car loan",
+        "home loan",
+        "hotstar",
+        "indane",
+        "lic",
+        "maid",
+        "netflix",
+        "ppf",
+        "prime",
+        "school fees",
+        "sonyliv"
+      ],
+      "detected_expected": [
+        "act fibernet",
+        "byjus",
+        "car loan",
+        "home loan",
+        "hotstar",
+        "indane",
+        "lic",
+        "maid",
+        "netflix",
+        "ppf",
+        "prime",
+        "school fees",
+        "sonyliv"
+      ],
+      "missed": [],
+      "recall": 1.0,
+      "total_detected": 15,
+      "detected": [
+        "ACH D HDFC HOME LOAN EMI ~38500.0",
+        "NEFT DPS SCHOOL FEES QTR ~14000.0",
+        "ACH D BAJAJ FINANCE CAR LOAN EMI ~12400.0",
+        "ACH D SBI PPF DEPOSIT ~8000.0",
+        "UPI/SALARY TO MAID SUNITA/306196@ybl ~6000.0",
+        "ACH D LIC PREMIUM ~4200.0",
+        "UPI/P2M/205649/APOLLO PHARMACY PARENTS MEDICINES ~2766.07",
+        "UPI/BYJUS TUITION/485673@ybl ~2500.0",
+        "UPI/ACT FIBERNET BROADBAND/636017@ybl ~1059.0",
+        "UPI/P2M/623115/INDANE GAS CYLINDER ~905.0",
+        "NETFLIX.COM*281695 ~649.0",
+        "UPI-BWSSB WATER BILL-731542 ~611.68",
+        "POS AMAZON PRIME MEMBERSHIP 845181 ~299.0",
+        "UPI/P2M/989403/DISNEY HOTSTAR ~299.0",
+        "POS SONYLIV PREMIUM 170822 ~299.0"
+      ]
+    }
   },
   "forecast": {
-    "rows": [
-      {
-        "month": "2026-07",
-        "predicted_spend": 79257.58,
-        "actual_spend": 105263.95,
-        "abs_pct_error": 24.71,
-        "predicted_net": 5742.42,
-        "actual_net": -9691.02
-      },
-      {
-        "month": "2026-08",
-        "predicted_spend": 74430.65,
-        "actual_spend": 73002.6,
-        "abs_pct_error": 1.96,
-        "predicted_net": 20696.47,
-        "actual_net": 11997.4
-      },
-      {
-        "month": "2026-09",
-        "predicted_spend": 73645.32,
-        "actual_spend": 73878.89,
-        "abs_pct_error": 0.32,
-        "predicted_net": 11354.68,
-        "actual_net": 22046.3
-      },
-      {
-        "month": "2026-10",
-        "predicted_spend": 69412.38,
-        "actual_spend": 84931.5,
-        "abs_pct_error": 18.27,
-        "predicted_net": 26160.55,
-        "actual_net": 68.5
-      }
-    ],
-    "mape_spend_pct": 11.31,
-    "mae_net": 15229.05,
-    "naive_last_month_mape_pct": 18.74
+    "priya": {
+      "rows": [
+        {
+          "month": "2026-07",
+          "predicted_spend": 89052.26,
+          "actual_spend": 112409.75,
+          "abs_pct_error": 20.78,
+          "predicted_net": 20947.74,
+          "actual_net": -2409.75
+        },
+        {
+          "month": "2026-08",
+          "predicted_spend": 83398.35,
+          "actual_spend": 96877.25,
+          "abs_pct_error": 13.91,
+          "predicted_net": 26601.65,
+          "actual_net": 13122.75
+        },
+        {
+          "month": "2026-09",
+          "predicted_spend": 88542.17,
+          "actual_spend": 96708.29,
+          "abs_pct_error": 8.44,
+          "predicted_net": 21457.83,
+          "actual_net": 13291.71
+        },
+        {
+          "month": "2026-10",
+          "predicted_spend": 88551.66,
+          "actual_spend": 88403.15,
+          "abs_pct_error": 0.17,
+          "predicted_net": 21448.34,
+          "actual_net": 21596.85
+        }
+      ],
+      "mape_spend_pct": 10.83,
+      "mae_net": 11287.76,
+      "naive_last_month_mape_pct": 9.1
+    },
+    "aarav": {
+      "rows": [
+        {
+          "month": "2026-07",
+          "predicted_spend": 36134.73,
+          "actual_spend": 30092.3,
+          "abs_pct_error": 20.08,
+          "predicted_net": 5865.27,
+          "actual_net": 4907.7
+        },
+        {
+          "month": "2026-08",
+          "predicted_spend": 33656.64,
+          "actual_spend": 85532.2,
+          "abs_pct_error": 60.65,
+          "predicted_net": 1343.36,
+          "actual_net": -59532.2
+        },
+        {
+          "month": "2026-09",
+          "predicted_spend": 29556.09,
+          "actual_spend": 27675.55,
+          "abs_pct_error": 6.79,
+          "predicted_net": 5443.91,
+          "actual_net": 20324.45
+        },
+        {
+          "month": "2026-10",
+          "predicted_spend": 27818.91,
+          "actual_spend": 29374.47,
+          "abs_pct_error": 5.3,
+          "predicted_net": 7181.09,
+          "actual_net": 625.53
+        }
+      ],
+      "mape_spend_pct": 23.2,
+      "mae_net": 20817.31,
+      "naive_last_month_mape_pct": 75.06
+    },
+    "sharma": {
+      "rows": [
+        {
+          "month": "2026-07",
+          "predicted_spend": 124334.94,
+          "actual_spend": 158389.42,
+          "abs_pct_error": 21.5,
+          "predicted_net": 15665.06,
+          "actual_net": -18389.42
+        },
+        {
+          "month": "2026-08",
+          "predicted_spend": 117689.81,
+          "actual_spend": 118980.08,
+          "abs_pct_error": 1.08,
+          "predicted_net": 22310.19,
+          "actual_net": 21019.92
+        },
+        {
+          "month": "2026-09",
+          "predicted_spend": 115981.67,
+          "actual_spend": 140950.19,
+          "abs_pct_error": 17.71,
+          "predicted_net": 24018.33,
+          "actual_net": -950.19
+        },
+        {
+          "month": "2026-10",
+          "predicted_spend": 162177.23,
+          "actual_spend": 222432.63,
+          "abs_pct_error": 27.09,
+          "predicted_net": -22177.23,
+          "actual_net": -82432.63
+        }
+      ],
+      "mape_spend_pct": 16.84,
+      "mae_net": 30142.17,
+      "naive_last_month_mape_pct": 21.5
+    }
   }
 }

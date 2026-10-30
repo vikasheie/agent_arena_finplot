@@ -1,10 +1,11 @@
 """Proactive delivery: a real APScheduler cron job builds and sends the digest (no manual button needed)."""
+import contextvars
 import logging
 
 import httpx
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from finpilot import config, db, llm
+from finpilot import config, db, llm, profiles
 from finpilot.coordinator import build_digest
 
 log = logging.getLogger("finpilot.scheduler")
@@ -19,7 +20,12 @@ def _send_telegram(text: str) -> bool:
     return r.status_code == 200
 
 
+def digest_enabled() -> bool:
+    return db.get_setting("digest_enabled", "1") == "1"
+
+
 def digest_job() -> dict | None:
+    """Build + deliver the digest for the active profile."""
     if not db.all_transactions():
         log.info("digest skipped: no transactions")
         return None
@@ -34,11 +40,24 @@ def digest_job() -> dict | None:
     return {**d, "delivered_via": via}
 
 
+def all_profiles_job() -> None:
+    """The scheduled entry point: every profile that has digests switched on."""
+    for pid in profiles.PROFILES:
+        def one(pid=pid):
+            profiles.activate(pid)
+            if digest_enabled():
+                try:
+                    digest_job()
+                except Exception as e:  # one profile failing must not stop the others
+                    log.warning("digest failed for %s: %s", pid, e)
+        contextvars.copy_context().run(one)
+
+
 def start() -> BackgroundScheduler:
     global _scheduler
     if _scheduler is None:
         _scheduler = BackgroundScheduler()
-        _scheduler.add_job(digest_job, "cron", day_of_week=config.DIGEST_DAY_OF_WEEK, hour=config.DIGEST_HOUR,
+        _scheduler.add_job(all_profiles_job, "cron", day_of_week=config.DIGEST_DAY_OF_WEEK, hour=config.DIGEST_HOUR,
                            id="weekly_digest", replace_existing=True)
         _scheduler.start()
     return _scheduler

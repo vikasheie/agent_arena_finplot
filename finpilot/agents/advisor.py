@@ -26,6 +26,8 @@ Produce 3-5 specific, proactive recommendations. Rules:
   evidence amounts (never larger than what the evidence shows). Use 0 for one-off or alert-type advice.
 - "reason" explains, with numbers, which pattern or forecast triggered it.
 - No generic advice such as "create a budget" or "track your spending".
+- For bills that cannot be cancelled (electricity, fuel, groceries) give ONE concrete behavioural action
+  (e.g. "Run the AC on a 26°C night-mode timer") with a saving no larger than the rise shown in the trend.
 - Prioritise items that fix a negative forecast, a goal that is behind, or a sharp anomaly.
 Respond as JSON: {"recommendations": [{"title": str, "action": str, "monthly_impact": number,
 "evidence_ids": [str], "reason": str}]}"""
@@ -44,8 +46,10 @@ def _max_supported_impact(ev: dict) -> float:
     d = ev["data"]
     return {
         "recurring": lambda: d["monthly_amount"],
+        "top_merchant": lambda: d["monthly_avg"],
         "impulse": lambda: d["monthly_avg"],
         "trend": lambda: d["amount"] - d["baseline"],
+        "bill_trend": lambda: d["increase"],
         "anomaly": lambda: d["amount"],
         "summary": lambda: d["discretionary_monthly"] * 0.5,
         "forecast": lambda: max(d.get("monthly_variable", 0) * 0.3, 0),
@@ -99,7 +103,8 @@ def verify(recs: list[dict], evidence: dict[str, dict]) -> tuple[list[dict], lis
 
 
 def advise(analysis: dict, fc: dict, goal_status: list[dict], feedback: list[dict] | None = None,
-           accepted: list[dict] | None = None, run_id: int | None = None) -> list[dict]:
+           accepted: list[dict] | None = None, dismissed: list[dict] | None = None,
+           run_id: int | None = None) -> list[dict]:
     evidence = _evidence_index(analysis, fc, goal_status)
     compact = {
         "patterns": [{k: p[k] for k in ("id", "kind", "summary")} for p in analysis.get("patterns", [])],
@@ -118,6 +123,9 @@ def advise(analysis: dict, fc: dict, goal_status: list[dict], feedback: list[dic
                       for r in feedback]))
     if accepted:
         user += "\n\nAlready accepted (do not repeat): " + json.dumps([r["title"] for r in accepted])
+    if dismissed:
+        user += ("\n\nThe user switched these off earlier; do not suggest them again: "
+                 + json.dumps([r["title"] for r in dismissed]))
     out = llm.chat_json(ADVISOR_PROMPT, user, agent=ADVISOR, run_id=run_id, model=config.MODEL_SMART,
                         temperature=0.2)
     recs = out.get("recommendations", [])

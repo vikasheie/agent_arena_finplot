@@ -2,9 +2,13 @@
 import json
 import sqlite3
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 
 from finpilot import config
+
+# The active profile's database file; set per request / per background job. None -> config.DB_PATH.
+current_db: ContextVar[str | None] = ContextVar("current_db", default=None)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS transactions (
@@ -25,6 +29,7 @@ CREATE TABLE IF NOT EXISTS merchant_memory (
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kind TEXT NOT NULL,            -- pipeline | question | digest
+    status TEXT NOT NULL DEFAULT 'done',  -- running | done | error
     started_at TEXT NOT NULL,
     state_json TEXT
 );
@@ -38,6 +43,7 @@ CREATE TABLE IF NOT EXISTS recommendations (
     reason TEXT NOT NULL,
     verified INTEGER NOT NULL,
     verifier_note TEXT,
+    state TEXT NOT NULL DEFAULT 'active',  -- active | dismissed (user toggle; dismissed advice is fed back)
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS decision_trail (
@@ -78,7 +84,7 @@ def now() -> str:
 
 @contextmanager
 def connect(path: str | None = None):
-    conn = sqlite3.connect(path or config.DB_PATH)
+    conn = sqlite3.connect(path or current_db.get() or config.DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     try:
         yield conn
@@ -87,9 +93,20 @@ def connect(path: str | None = None):
         conn.close()
 
 
+MIGRATIONS = [
+    "ALTER TABLE runs ADD COLUMN status TEXT NOT NULL DEFAULT 'done'",
+    "ALTER TABLE recommendations ADD COLUMN state TEXT NOT NULL DEFAULT 'active'",
+]
+
+
 def init_db(path: str | None = None) -> None:
     with connect(path) as conn:
         conn.executescript(SCHEMA)
+        for stmt in MIGRATIONS:  # upgrade databases created by older versions
+            try:
+                conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass
 
 
 def insert_transactions(rows: list[dict], path: str | None = None) -> list[int]:
@@ -141,18 +158,27 @@ def remember_merchant(key: str, category: str, source: str, path: str | None = N
 
 def start_run(kind: str, path: str | None = None) -> int:
     with connect(path) as conn:
-        return conn.execute("INSERT INTO runs (kind, started_at) VALUES (?, ?)", (kind, now())).lastrowid
+        return conn.execute("INSERT INTO runs (kind, status, started_at) VALUES (?, 'running', ?)",
+                            (kind, now())).lastrowid
 
 
-def finish_run(run_id: int, state: dict, path: str | None = None) -> None:
+def finish_run(run_id: int, state: dict, status: str = "done", path: str | None = None) -> None:
     with connect(path) as conn:
-        conn.execute("UPDATE runs SET state_json = ? WHERE id = ?", (json.dumps(state, default=str), run_id))
+        conn.execute("UPDATE runs SET state_json = ?, status = ? WHERE id = ?",
+                     (json.dumps(state, default=str), status, run_id))
+
+
+def get_run(run_id: int, path: str | None = None) -> dict | None:
+    with connect(path) as conn:
+        r = conn.execute("SELECT id, kind, status, started_at FROM runs WHERE id = ?", (run_id,)).fetchone()
+    return dict(r) if r else None
 
 
 def latest_run(kind: str = "pipeline", path: str | None = None) -> dict | None:
     with connect(path) as conn:
         r = conn.execute(
-            "SELECT * FROM runs WHERE kind = ? AND state_json IS NOT NULL ORDER BY id DESC LIMIT 1", (kind,)
+            "SELECT * FROM runs WHERE kind = ? AND status = 'done' AND state_json IS NOT NULL ORDER BY id DESC LIMIT 1",
+            (kind,)
         ).fetchone()
     if not r:
         return None
@@ -189,6 +215,27 @@ def recommendations(run_id: int, path: str | None = None) -> list[dict]:
     with connect(path) as conn:
         rows = conn.execute("SELECT * FROM recommendations WHERE run_id = ? ORDER BY id", (run_id,)).fetchall()
     return [{**dict(r), "evidence_ids": json.loads(r["evidence_ids"])} for r in rows]
+
+
+def set_recommendation_state(rec_id: int, state: str, path: str | None = None) -> None:
+    with connect(path) as conn:
+        conn.execute("UPDATE recommendations SET state = ? WHERE id = ?", (state, rec_id))
+
+
+def dismissed_recommendations(limit: int = 20, path: str | None = None) -> list[dict]:
+    with connect(path) as conn:
+        rows = conn.execute("SELECT title, action FROM recommendations WHERE state = 'dismissed' ORDER BY id DESC "
+                            "LIMIT ?", (limit,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def token_usage(run_id: int, path: str | None = None) -> dict[str, int]:
+    """Total tokens per agent for a run, from the Mesh call log in the decision trail."""
+    usage: dict[str, int] = {}
+    for e in trail(run_id, path):
+        if e["step"] == "llm_call" and e["detail"].get("tokens"):
+            usage[e["agent"]] = usage.get(e["agent"], 0) + int(e["detail"]["tokens"])
+    return usage
 
 
 def add_goal(name: str, target_amount: float, target_date: str, saved_so_far: float = 0.0,
@@ -231,5 +278,5 @@ def set_setting(key: str, value: str, path: str | None = None) -> None:
 
 def reset(path: str | None = None) -> None:
     with connect(path) as conn:
-        for t in ("transactions", "runs", "recommendations", "decision_trail", "digests"):
+        for t in ("transactions", "runs", "recommendations", "decision_trail", "digests", "merchant_memory", "goals"):
             conn.execute(f"DELETE FROM {t}")

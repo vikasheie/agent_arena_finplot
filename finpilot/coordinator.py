@@ -6,7 +6,9 @@ Pipeline graph:
 Question flow: the coordinator classifies the user's question and routes it to the forecaster's
 what-if simulator (affordability / decisions) or the Q&A agent (free-form questions over real data).
 """
+import contextvars
 import json
+import threading
 from datetime import date
 from typing import Any, TypedDict
 
@@ -62,7 +64,7 @@ def _advise(state: PipelineState) -> PipelineState:
     try:
         drafts = advisor.advise(state["analysis"], state["forecast"], state.get("goal_status", []),
                                 feedback=state.get("rejected"), accepted=state.get("accepted"),
-                                run_id=state["run_id"])
+                                dismissed=db.dismissed_recommendations(), run_id=state["run_id"])
     except Exception as e:  # Mesh outage: stop advising, keep what is already verified
         db.log_decision(state["run_id"], "advisor", "error", {"round": rnd, "error": str(e)})
         return {"drafts": [], "advice_round": MAX_ADVICE_ROUNDS}
@@ -128,15 +130,61 @@ def build_graph():
 _GRAPH = None
 
 
-def run_pipeline() -> dict:
+def run_pipeline(run_id: int | None = None) -> dict:
     global _GRAPH
     _GRAPH = _GRAPH or build_graph()
-    run_id = db.start_run("pipeline")
-    state = _GRAPH.invoke({"run_id": run_id})
+    run_id = run_id or db.start_run("pipeline")
+    try:
+        state = _GRAPH.invoke({"run_id": run_id})
+    except Exception as e:
+        db.log_decision(run_id, "coordinator", "error", {"error": str(e)})
+        db.finish_run(run_id, {"error": str(e)}, status="error")
+        raise
     keep = {k: state.get(k) for k in ("run_id", "categorization", "analysis", "forecast", "goal_status",
                                       "recommendations", "rejected_history", "advice_round")}
+    keep["tokens"] = db.token_usage(run_id)
     db.finish_run(run_id, keep)
     return keep
+
+
+def start_pipeline() -> int:
+    """Run the graph in a background thread so the UI can watch the trail fill in live."""
+    run_id = db.start_run("pipeline")
+    ctx = contextvars.copy_context()  # carries the active profile's database
+
+    def work():
+        try:
+            run_pipeline(run_id)
+        except Exception:
+            pass  # already recorded in the run + decision trail
+
+    threading.Thread(target=lambda: ctx.run(work), daemon=True, name=f"pipeline-{run_id}").start()
+    return run_id
+
+
+AGENT_ORDER = ["coordinator", "categorizer", "analyzer", "forecaster", "advisor", "verifier"]
+
+
+def run_status(run_id: int) -> dict:
+    run = db.get_run(run_id)
+    if not run:
+        return {}
+    events = db.trail(run_id)
+    agents = {a: {"status": "pending", "events": 0, "tokens": 0, "llm_calls": 0, "errors": 0} for a in AGENT_ORDER}
+    for e in events:
+        a = agents.setdefault(e["agent"], {"status": "pending", "events": 0, "tokens": 0, "llm_calls": 0, "errors": 0})
+        a["events"] += 1
+        a["status"] = "done"
+        if e["step"] == "llm_call":
+            a["llm_calls"] += 1
+            a["tokens"] += int(e["detail"].get("tokens") or 0)
+        if e["step"] in ("llm_error", "error"):
+            a["errors"] += 1
+    active = events[-1]["agent"] if events and run["status"] == "running" else None
+    if active:
+        agents[active]["status"] = "running"
+    return {**run, "active_agent": active, "agents": agents, "events": events,
+            "tokens_total": sum(a["tokens"] for a in agents.values())}
 
 
 def _latest_state() -> dict:

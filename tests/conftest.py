@@ -17,7 +17,7 @@ def fresh_db(tmp_path, monkeypatch):
 
 @pytest.fixture
 def persona_rows():
-    with open(ROOT / "eval" / "ground_truth.csv") as f:
+    with open(ROOT / "eval" / "ground_truth" / "priya.csv") as f:
         rows = list(csv.DictReader(f))
     for r in rows:
         r["amount"] = float(r["amount"])
