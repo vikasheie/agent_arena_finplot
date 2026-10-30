@@ -195,3 +195,13 @@ def test_verifier_rejects_cutting_essentials(labelled_db, monkeypatch):
            "monthly_impact": 2000, "evidence_ids": [rent["id"]], "reason": "rent is high"}
     ok, bad = advisor.verify([rec], ev)
     assert not ok and "essential spend" in bad[0]["verifier_note"]
+
+
+def test_verifier_rejects_implausibly_small_saving(labelled_db, monkeypatch):
+    monkeypatch.setattr(llm, "available", lambda: False)
+    analysis, fc, ev = _evidence(labelled_db)
+    top = next(p for p in analysis["patterns"] if p["kind"] == "top_merchant")
+    rec = {"title": f"Cut {top['data']['merchant']}", "action": f"Order less from {top['data']['merchant']}",
+           "monthly_impact": 3, "evidence_ids": [top["id"]], "reason": "delivery adds up"}
+    ok, bad = advisor.verify([rec], ev)
+    assert not ok and "realistic monthly saving" in bad[0]["verifier_note"]

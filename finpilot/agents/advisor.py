@@ -92,6 +92,9 @@ def verify(recs: list[dict], evidence: dict[str, dict]) -> tuple[list[dict], lis
             impact = -1
             problems.append("monthly_impact is not a number")
         cap = sum(_max_supported_impact(e) for e in cited)
+        if 0 < impact < 100 and cap >= 1000:  # e.g. "+INR 3/month" on a ₹6,500/month habit: a slip, not advice
+            problems.append(f"claims only INR {impact:,.0f}/month although the evidence involves up to "
+                            f"INR {cap:,.0f}/month; state the realistic monthly saving")
         if cited and impact > cap * 1.05 + 1:
             problems.append(f"claims INR {impact:,.0f}/month but cited evidence supports at most INR {cap:,.0f}")
         text = f"{r.get('title', '')} {r.get('action', '')}".lower()
