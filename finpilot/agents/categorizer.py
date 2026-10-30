@@ -8,13 +8,17 @@ Pipeline per transaction:
 A keyword fallback exists only for running without a Mesh key; it is tagged `fallback` and
 evaluated separately in eval/.
 """
+import contextvars
 import json
 import re
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from finpilot import config, db, llm
 
 AGENT = "categorizer"
 BATCH = 40
+PARALLEL_CALLS = 4
 CONFIDENCE_FLOOR = 0.7
 MAX_RECHECK_ROUNDS = 2
 
@@ -111,12 +115,15 @@ def _system_prompt() -> str:
         f"Categories:\n{guide}\n"
         'Respond with JSON: {"labels": [{"id": <int>, "category": <category>, "confidence": <0..1>, '
         '"why": <max 8 words, e.g. "Swiggy is food delivery">}]}. '
-        "Give a label for every id. Use lower confidence when the description is ambiguous."
+        "Give a label for every id. Rows with \"occurrences\" stand for that many payments to the same merchant. "
+        "Use lower confidence when the description is ambiguous."
     )
 
 
 def _ask(batch: list[dict], run_id: int | None, model: str, extra: str = "") -> dict[int, dict]:
-    payload = [{"id": t["id"], "date": t["date"], "description": t["description"], "amount": t["amount"]}
+    payload = [{"id": t["id"], "date": t["date"], "description": t["description"], "amount": t["amount"],
+                **({"occurrences": t["occurrences"], "amount_range": t["amount_range"]} if t.get("occurrences", 1) > 1
+                   else {})}
                for t in batch]
     data = llm.chat_json(_system_prompt(), extra + json.dumps(payload), agent=AGENT, run_id=run_id, model=model)
     out = {}
@@ -170,15 +177,31 @@ def categorize_pending(run_id: int | None = None) -> dict:
         db.log_decision(run_id, AGENT, "categorize", stats)
         return stats
 
+    # One LLM label per (merchant, direction): 40 Swiggy orders are one question, not 40. A refund (money in)
+    # from a shop stays separate from purchases there. The representative carries how often it occurs.
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for tx in to_llm:
+        groups[(merchant_key(tx["description"]), tx["amount"] > 0)].append(tx)
+    reps = []
+    for members in groups.values():
+        amounts = [abs(m["amount"]) for m in members]
+        reps.append({**members[0], "occurrences": len(members),
+                     "amount_range": [round(min(amounts), 2), round(max(amounts), 2)]})
+    stats["unique_merchants"] = len(reps)
+
     labels: dict[int, dict] = {}
-    for i in range(0, len(to_llm), BATCH):
-        try:
-            labels.update(_ask(to_llm[i:i + BATCH], run_id, config.MODEL_FAST))
-        except Exception as e:  # Mesh outage: these rows fall through to the flagged fallback below
-            db.log_decision(run_id, AGENT, "error", {"batch_start": i, "error": str(e)})
+    batches = [reps[i:i + BATCH] for i in range(0, len(reps), BATCH)]
+    with ThreadPoolExecutor(max_workers=PARALLEL_CALLS) as pool:  # batches go to Mesh concurrently
+        futures = {pool.submit(contextvars.copy_context().run, _ask, b, run_id, config.MODEL_FAST): i
+                   for i, b in enumerate(batches)}
+        for fut in as_completed(futures):
+            try:
+                labels.update(fut.result())
+            except Exception as e:  # Mesh outage: these rows fall through to the flagged fallback below
+                db.log_decision(run_id, AGENT, "error", {"batch": futures[fut], "error": str(e)})
 
     # Self-check loop: re-ask anything invalid with the smart model and the user's own examples.
-    recheck = [t for t in to_llm if _invalid_reason(t, labels.get(t["id"]))]
+    recheck = [t for t in reps if _invalid_reason(t, labels.get(t["id"]))]
     for round_no in range(MAX_RECHECK_ROUNDS):
         if not recheck:
             break
@@ -197,21 +220,25 @@ def categorize_pending(run_id: int | None = None) -> dict:
             labels[tid] = lab
         recheck = [t for t in recheck if _invalid_reason(t, labels.get(t["id"]))]
 
-    for tx in to_llm:
-        lab = labels.get(tx["id"])
-        reason = _invalid_reason(tx, lab)
+    for rep_tx in reps:
+        lab = labels.get(rep_tx["id"])
+        reason = _invalid_reason(rep_tx, lab)
+        members = groups[(merchant_key(rep_tx["description"]), rep_tx["amount"] > 0)]
         # Accept a valid label even if confidence stayed low; reject structural contradictions.
         if lab and (reason is None or reason.startswith("low confidence")):
             cat, conf = lab["category"], float(lab.get("confidence", 0.5))
             source = "llm_recheck" if lab.get("_rechecked") else "llm"
             why = str(lab.get("why") or "")[:120] + (" (re-checked)" if source == "llm_recheck" else "")
-        else:  # still invalid after the loop: deterministic fallback, flagged
-            cat, conf, why = _fallback_category(tx)
-            source = "fallback"
-        db.set_category(tx["id"], cat, source, conf, why)
-        stats[source] += 1
-        if source != "fallback" and conf >= 0.85:
-            db.remember_merchant(merchant_key(tx["description"]), cat, "llm")
+            for tx in members:
+                db.set_category(tx["id"], cat, source, conf, why)
+            stats[source] += len(members)
+            if conf >= 0.85:
+                db.remember_merchant(merchant_key(rep_tx["description"]), cat, "llm")
+        else:  # still invalid after the loop: deterministic fallback per row, flagged
+            for tx in members:
+                cat, conf, why = _fallback_category(tx)
+                db.set_category(tx["id"], cat, "fallback", conf, why)
+            stats["fallback"] += len(members)
 
     db.log_decision(run_id, AGENT, "categorize", stats, model=config.MODEL_FAST)
     return stats
