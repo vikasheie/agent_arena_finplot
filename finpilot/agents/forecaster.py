@@ -161,10 +161,11 @@ def earliest_purchase(txs: list[dict], amount: float, opening_balance: float = 0
     found: dict = {"horizon_months": horizon, "affordable": None, "tight": None}
     for offset in range(1, horizon + 1):
         sim = simulate(fc, {"type": "purchase", "amount": amount, "month_offset": offset})
-        hit = {"month": fc["path"][offset - 1]["month"], "month_offset": offset,
-               "min_balance": sim["min_balance"], "set_aside_per_month": round(amount / offset, 2)}
+        hit = {"month": fc["path"][offset - 1]["month"], "month_offset": offset, "min_balance": sim["min_balance"]}
         if found["tight"] is None and sim["verdict"] in ("tight", "affordable"):
-            found["tight"] = hit
+            found["tight"] = dict(hit)  # earliest month it fits at all; no savings plan implied
+        if sim["verdict"] == "affordable":
+            hit["set_aside_per_month"] = round(amount / offset, 2)  # saving towards it until the comfortable month
         if sim["verdict"] == "affordable":
             found["affordable"] = hit
             break

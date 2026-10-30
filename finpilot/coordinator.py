@@ -273,8 +273,8 @@ Amounts in INR (1 lakh = 100000, 1k = 1000)."""
 EXPLAIN_PROMPT = """You are FinPilot answering the user's money question using ONLY the provided numbers.
 Be direct (start with Yes / No / Tight), quote rupee figures, mention the lowest projected balance and the
 safety buffer, and if relevant name the specific categories to cut from "suggested_cuts".
-If "earliest" is present, also say from which month it becomes comfortably affordable ("affordable") and from
-which month it is possible but tight ("tight"), with the monthly amount to set aside until then; if both are
+If "earliest" is present, also say from which month it becomes comfortably affordable ("affordable", with its
+monthly set-aside) and from which month it is merely possible but tight ("tight", no set-aside); if both are
 null, say it is not reachable within the horizon at the current pace.
 Write amounts as plain ASCII like "INR 20,000" (never the rupee symbol or unicode escapes) and copy every
 number exactly from the input, rounded to whole rupees.
@@ -338,7 +338,7 @@ def unsupported_numbers(text: str, sim: dict) -> list[str]:
     facts += [abs(float(c[k])) for c in sim.get("suggested_cuts", []) for k in ("cut_per_month", "current_per_month")]
     for hit in (sim.get("earliest") or {}).values():
         if isinstance(hit, dict):
-            facts += [abs(float(hit[k])) for k in ("min_balance", "set_aside_per_month")]
+            facts += [abs(float(hit[k])) for k in ("min_balance", "set_aside_per_month") if k in hit]
     bad = []
     for tok in _NUM.findall(text):
         value = float(tok.replace(",", ""))

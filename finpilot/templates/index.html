@@ -692,7 +692,7 @@ function simBlock(sim, text) {
 function earliestBlock(e) {
   if (!e || e.error) return "";
   const a = e.affordable, t = e.tight;
-  const cell = (label, hit, color) => `<div class="tile"><span>${label}</span><b style="color:${color}">${hit ? monY(hit.month) : "not within " + e.horizon_months + " mo"}</b>${hit ? `<div class="mono muted" style="font-size:11px">set aside ${inr(hit.set_aside_per_month)}/mo · lowest ${inrShort(hit.min_balance)}</div>` : ""}</div>`;
+  const cell = (label, hit, color) => `<div class="tile"><span>${label}</span><b style="color:${color}">${hit ? monY(hit.month) : "not within " + e.horizon_months + " mo"}</b>${hit ? `<div class="mono muted" style="font-size:11px">${hit.set_aside_per_month ? `set aside ${inr(hit.set_aside_per_month)}/mo · ` : ""}lowest ${inrShort(hit.min_balance)}</div>` : ""}</div>`;
   return `<div style="margin-top:12px;border:1px solid var(--green-line);background:var(--green-dim);border-radius:12px;padding:12px">
     <b>When can you buy it?</b> <span class="muted" style="font-size:12.5px">The Forecaster tried the purchase in each of the next ${e.horizon_months} months of your projection.</span>
     <div class="tiles" style="grid-template-columns:repeat(2,minmax(0,1fr))">${cell("comfortably (stays above buffer)", a, "var(--green)")}${cell("possible but tight (stays above ₹0)", t, "var(--yellow)")}</div></div>`;
