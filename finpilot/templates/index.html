@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FinPilot</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1b1f24; --muted:#5f6b7a; --line:#e3e6ea; --accent:#2457d6;
+          --good:#1a7f4b; --warn:#a86a00; --bad:#c0362c; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:16px 24px; background:var(--card); border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:20px; }
+  header .status { color:var(--muted); font-size:13px; }
+  main { max-width:1200px; margin:0 auto; padding:16px; display:grid; gap:16px; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; min-width:0; }
+  section.wide { grid-column:1 / -1; }
+  h2 { font-size:16px; margin:0 0 12px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:8px 14px; cursor:pointer; font:inherit; }
+  button.secondary { background:#e8ecf4; color:var(--ink); }
+  button:disabled { opacity:.5; cursor:wait; }
+  input, select { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:6px; max-width:100%; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+  .muted { color:var(--muted); font-size:13px; }
+  .rec { border-left:3px solid var(--accent); padding:8px 12px; margin:10px 0; background:#f8faff; }
+  .rec .why { font-size:13px; color:var(--muted); }
+  .tag { display:inline-block; font-size:12px; padding:1px 7px; border-radius:10px; background:#eef1f6; margin-right:4px; }
+  .affordable { color:var(--good); } .tight { color:var(--warn); } .not_affordable { color:var(--bad); }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { text-align:left; padding:5px 6px; border-bottom:1px solid var(--line); }
+  .scroll { max-height:340px; overflow:auto; }
+  pre { white-space:pre-wrap; font-size:12px; background:#f3f4f6; padding:8px; border-radius:6px; margin:4px 0; }
+  svg text { font-size:11px; fill:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>FinPilot</h1>
+  <span class="status" id="health">checking…</span>
+</header>
+<main>
+  <section>
+    <h2>1. Add transactions</h2>
+    <div class="row">
+      <input type="file" id="csv" accept=".csv">
+      <button onclick="uploadCsv()">Upload CSV</button>
+    </div>
+    <div class="row"><button class="secondary" onclick="loadDemo()">Load demo data (6 months)</button></div>
+    <div class="row">
+      <input id="m_date" type="date"><input id="m_desc" placeholder="Description" size="14">
+      <input id="m_amt" type="number" placeholder="Amount" style="width:100px">
+      <select id="m_kind"><option>expense</option><option>income</option></select>
+      <button class="secondary" onclick="addManual()">Add</button>
+    </div>
+    <div class="row">
+      <span class="muted">Opening balance</span><input id="ob" type="number" style="width:120px">
+      <button class="secondary" onclick="setBalance()">Save</button>
+    </div>
+    <p class="muted" id="ingest_msg"></p>
+  </section>
+
+  <section>
+    <h2>2. Run the agents</h2>
+    <p class="muted">Coordinator → Categorizer → Analyzer → Forecaster → Advisor ⇄ Verifier</p>
+    <button id="runbtn" onclick="runPipeline()">Run analysis</button>
+    <p class="muted" id="run_msg"></p>
+    <h2 style="margin-top:16px">Goals</h2>
+    <div class="row">
+      <input id="g_name" placeholder="Goal" size="10"><input id="g_amt" type="number" placeholder="Target" style="width:100px">
+      <input id="g_date" type="date"><button class="secondary" onclick="addGoal()">Add goal</button>
+    </div>
+    <div id="goals" class="muted"></div>
+  </section>
+
+  <section class="wide">
+    <h2>Forecast</h2>
+    <div id="forecast_summary" class="muted">Run the analysis to see your trajectory.</div>
+    <svg id="chart" viewBox="0 0 900 220" width="100%" height="220" role="img" aria-label="Projected balance"></svg>
+  </section>
+
+  <section>
+    <h2>Recommendations</h2>
+    <div id="recs" class="muted">—</div>
+  </section>
+
+  <section>
+    <h2>Patterns &amp; anomalies</h2>
+    <p id="narrative"></p>
+    <div id="patterns" class="scroll muted">—</div>
+  </section>
+
+  <section>
+    <h2>Ask FinPilot</h2>
+    <div class="row">
+      <input id="q" placeholder="Can I afford a ₹40,000 trip next month?" style="flex:1; min-width:200px">
+      <button id="askbtn" onclick="ask()">Ask</button>
+    </div>
+    <div id="answer"></div>
+  </section>
+
+  <section>
+    <h2>Proactive digest</h2>
+    <p class="muted" id="digest_next"></p>
+    <button class="secondary" onclick="digestNow()">Send digest now</button>
+    <div id="digests"></div>
+  </section>
+
+  <section class="wide">
+    <h2>Transactions</h2>
+    <div class="scroll"><table id="txs"></table></div>
+  </section>
+
+  <section class="wide">
+    <h2>Decision trail</h2>
+    <p class="muted">Every agent step and LLM call for the latest run, with the evidence it used.</p>
+    <div id="trail" class="scroll"></div>
+  </section>
+</main>
+<script>
+const CATS = {{ categories | tojson }};
+const inr = v => "₹" + Math.round(v).toLocaleString("en-IN");
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, opts);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || r.statusText);
+  return body;
+}
+const post = (path, data) => api(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data || {})});
+
+async function health() {
+  const h = await api("/health");
+  $("health").textContent = (h.llm_configured ? "Mesh API connected" : "MESH_API_KEY missing") +
+    ` · ${h.model_fast} / ${h.model_smart}`;
+}
+async function uploadCsv() {
+  const f = $("csv").files[0]; if (!f) return;
+  const fd = new FormData(); fd.append("file", f);
+  try { const r = await api("/api/transactions/upload", {method: "POST", body: fd}); $("ingest_msg").textContent = `Imported ${r.inserted} transactions.`; loadTx(); }
+  catch (e) { $("ingest_msg").textContent = e.message; }
+}
+async function loadDemo() {
+  try { const r = await post("/api/demo/load"); $("ingest_msg").textContent = `Loaded ${r.inserted} demo transactions.`; loadTx(); }
+  catch (e) { $("ingest_msg").textContent = e.message; }
+}
+async function addManual() {
+  try { const r = await post("/api/transactions", {date: $("m_date").value, description: $("m_desc").value, amount: +$("m_amt").value, kind: $("m_kind").value});
+        $("ingest_msg").textContent = `Added #${r.id}.`; loadTx(); }
+  catch (e) { $("ingest_msg").textContent = e.message; }
+}
+async function setBalance() { await post("/api/settings/opening-balance", {opening_balance: +$("ob").value}); $("ingest_msg").textContent = "Opening balance saved."; }
+async function addGoal() {
+  try { await post("/api/goals", {name: $("g_name").value, target_amount: +$("g_amt").value, target_date: $("g_date").value}); loadGoals(); }
+  catch (e) { alert(e.message); }
+}
+async function loadGoals() {
+  const g = await api("/api/goals");
+  $("goals").innerHTML = g.map(x => `${esc(x.name)}: ${inr(x.target_amount)} by ${x.target_date}`).join("<br>") || "No goals yet.";
+}
+async function runPipeline() {
+  $("runbtn").disabled = true; $("run_msg").textContent = "Agents working…";
+  try { await post("/api/run"); $("run_msg").textContent = "Done."; await loadInsights(); loadTx(); }
+  catch (e) { $("run_msg").textContent = e.message; }
+  $("runbtn").disabled = false;
+}
+async function loadInsights() {
+  const r = await api("/api/insights");
+  if (!r.state) return;
+  const s = r.state, fc = s.forecast;
+  if (fc && !fc.error) {
+    const st = s.goal_status || [];
+    $("forecast_summary").innerHTML = `Balance now <b>${inr(fc.current_balance)}</b> · income ${inr(fc.monthly_income)}/mo · fixed ${inr(fc.monthly_fixed)}/mo · variable ${inr(fc.monthly_variable)}/mo · net <b>${inr(fc.monthly_net)}/mo</b> · safety buffer ${inr(fc.safety_buffer)}` +
+      st.map(g => `<br>Goal "${esc(g.name)}": <b>${g.status.replace("_", " ")}</b> (needs ${inr(g.needed_per_month)}/mo)`).join("");
+    drawChart(fc.path.map(p => ({m: p.month, v: p.balance, lo: p.low, hi: p.high})));
+  } else { $("forecast_summary").textContent = fc ? fc.error : ""; }
+  $("recs").innerHTML = (r.recommendations || []).map(x => `<div class="rec"><b>${esc(x.title)}</b>
+     ${x.monthly_impact ? `<span class="tag">+${inr(x.monthly_impact)}/mo</span>` : ""}<br>${esc(x.action)}
+     <div class="why">Why: ${esc(x.reason)}<br>Evidence: ${x.evidence_ids.map(i => `<span class="tag">${esc(i)}</span>`).join("")} · Verified: ${esc(x.verifier_note)}</div></div>`).join("") || "No recommendations (need MESH_API_KEY).";
+  $("narrative").textContent = s.analysis.narrative || "";
+  $("patterns").innerHTML = s.analysis.patterns.map(p => `<div><span class="tag">${p.id}</span><span class="tag">${p.kind}</span>${esc(p.summary)}</div>`).join("");
+  loadTrail(r.run_id);
+}
+function drawChart(pts) {
+  const W = 900, H = 220, P = 50, svg = $("chart");
+  const vals = pts.flatMap(p => [p.lo, p.hi, 0]); const min = Math.min(...vals), max = Math.max(...vals);
+  const x = i => P + i * (W - 2 * P) / Math.max(1, pts.length - 1), y = v => H - 30 - (v - min) * (H - 50) / ((max - min) || 1);
+  const line = pts.map((p, i) => `${i ? "L" : "M"}${x(i)},${y(p.v)}`).join("");
+  const band = pts.map((p, i) => `${i ? "L" : "M"}${x(i)},${y(p.hi)}`).join("") + pts.slice().reverse().map((p, j) => `L${x(pts.length - 1 - j)},${y(p.lo)}`).join("") + "Z";
+  svg.innerHTML = `<path d="${band}" fill="#2457d6" opacity=".12"/><line x1="${P}" x2="${W - P}" y1="${y(0)}" y2="${y(0)}" stroke="#c0362c" stroke-dasharray="4"/>
+    <path d="${line}" fill="none" stroke="#2457d6" stroke-width="2.5"/>` +
+    pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.v)}" r="3.5" fill="#2457d6"/><text x="${x(i)}" y="${H - 10}" text-anchor="middle">${p.m}</text><text x="${x(i)}" y="${y(p.v) - 8}" text-anchor="middle">${inr(p.v)}</text>`).join("");
+}
+async function ask() {
+  const q = $("q").value.trim(); if (!q) return;
+  $("askbtn").disabled = true; $("answer").innerHTML = "<p class='muted'>Thinking…</p>";
+  try {
+    const r = await post("/api/ask", {question: q});
+    let html = `<p>${esc(r.answer)}</p>`;
+    if (r.simulation) html += `<p class="${r.simulation.verdict}"><b>${r.simulation.verdict.replace("_", " ")}</b> · lowest balance ${inr(r.simulation.min_balance)} (pessimistic ${inr(r.simulation.min_balance_pessimistic)}) vs buffer ${inr(r.simulation.safety_buffer)}</p>`;
+    $("answer").innerHTML = html + `<p class="muted">run #${r.run_id} · <a href="#" onclick="loadTrail(${r.run_id});return false">show trail</a></p>`;
+  } catch (e) { $("answer").textContent = e.message; }
+  $("askbtn").disabled = false;
+}
+async function digestNow() { try { await post("/api/digest/run-now"); } catch (e) { alert(e.message); } loadDigests(); loadInsights(); }
+async function loadDigests() {
+  const d = await api("/api/digests");
+  $("digest_next").textContent = "Next scheduled digest: " + (d.next_scheduled || "—");
+  $("digests").innerHTML = d.digests.map(x => `<div class="rec"><b>${esc(x.insight)}</b><br>${esc(x.action)}<div class="why">${x.created_at} via ${x.delivered_via}</div></div>`).join("");
+}
+async function loadTx() {
+  const t = await api("/api/transactions");
+  $("txs").innerHTML = "<tr><th>Date</th><th>Description</th><th>Amount</th><th>Category</th><th>Source</th></tr>" +
+    t.slice().reverse().map(x => `<tr><td>${x.date}</td><td>${esc(x.description)}</td><td>${inr(x.amount)}</td>
+      <td><select onchange="fix(${x.id}, this.value)">${["", ...CATS].map(c => `<option ${c === x.category ? "selected" : ""}>${c}</option>`).join("")}</select></td>
+      <td class="muted">${x.category_source || ""} ${x.confidence != null ? "(" + (+x.confidence).toFixed(2) + ")" : ""}</td></tr>`).join("");
+}
+async function fix(id, cat) { if (cat) await post(`/api/transactions/${id}/category`, {category: cat}); }
+async function loadTrail(runId) {
+  const t = await api(`/api/trail/${runId}`);
+  $("trail").innerHTML = `<p class="muted">Run #${runId}</p>` + t.map(e => `<div><span class="tag">${esc(e.agent)}</span><span class="tag">${esc(e.step)}</span><span class="muted">${e.created_at} ${esc(e.model || "")}</span><pre>${esc(JSON.stringify(e.detail, null, 1)).slice(0, 1500)}</pre></div>`).join("");
+}
+health(); loadTx(); loadGoals(); loadInsights(); loadDigests();
+</script>
+</body>
+</html>
