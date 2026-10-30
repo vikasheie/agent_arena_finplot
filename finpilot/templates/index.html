@@ -448,7 +448,9 @@ function renderUpload() {
 }
 function renderStages() {
   $("stages").innerHTML = STAGES.map((s, i) => { const cls = i < S.stage || (i === S.stage && i <= S.reached && !isRunning() && S.stage === 5) ? "done" : i === S.stage ? "cur" : "";
-    const ic = cls === "done" ? `<svg class="i" viewBox="0 0 24 24" style="color:var(--green)"><path d="M5 12l5 5L20 7"/></svg>` : cls === "cur" ? `<span class="spin"></span>` : `<span class="circle"></span>`;
+    const busy = isRunning() || (S.timer && S.stage < S.reached);
+    const ic = cls === "done" || (cls === "cur" && !S.status && i === 0) ? `<svg class="i" viewBox="0 0 24 24" style="color:var(--green)"><path d="M5 12l5 5L20 7"/></svg>`
+      : cls === "cur" ? (busy ? `<span class="spin"></span>` : `<span class="circle" style="border-color:var(--green);background:var(--green)"></span>`) : `<span class="circle"></span>`;
     return `<li class="${cls}"><span class="ic">${ic}</span>${s.name}</li>`; }).join("");
   $("pausebtn").querySelector("span").textContent = S.playing ? "Pause" : "Play";
   $("nextbtn").disabled = S.stage >= S.reached || S.reached < 0; $("pausebtn").disabled = S.reached < 0;
@@ -483,7 +485,9 @@ function renderStage() {
 }
 function stageImport(el) {
   const t = S.txs, first = t[0]?.date, last = t[t.length - 1]?.date;
+  const waiting = !S.status && !isRunning();
   el.innerHTML = `<h3>Import — ${t.length} rows</h3><p class="lede">${first} → ${last}. Schema checked (date, description, amount) and written to SQLite. No LLM needed for this step.</p>
+    ${waiting ? `<div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--green-line);background:var(--green-dim);border-radius:12px;padding:12px 14px;margin-bottom:14px"><span><b>Rows loaded.</b> Nothing is running yet. Press <b>Run FinPilot</b> to start the agents.</span><button class="btn g sm" onclick="run()">▶ Run FinPilot</button></div>` : ""}
     <div class="twrap"><table class="t"><tr><th>Date</th><th>Raw bank description</th><th style="text-align:right">Amount</th></tr>${t.slice(0, 40).map(x => `<tr><td class="d">${dshort(x.date)}</td><td class="mono" style="font-size:12.5px;color:var(--ink-2)">${esc(x.description)}</td><td class="a ${x.amount > 0 ? "in" : ""}">${x.amount > 0 ? "+" : ""}${inr(x.amount)}</td></tr>`).join("")}</table></div>`;
 }
 function catPill(t) { const c = CAT_COLORS[t.category] || "#6e6e6e"; return `<span class="cat" style="color:${c};background:${c}22"><select data-id="${t.id}" title="Change category (teaches the merchant memory)">${CATS.map(k => `<option ${k === t.category ? "selected" : ""} value="${k}">${k[0].toUpperCase() + k.slice(1)}</option>`).join("")}</select></span>`; }
@@ -587,7 +591,7 @@ function renderLog() {
   const ev = S.status?.events || [], limit = isRunning() ? Infinity : S.stage;
   const lines = [];
   if (S.txs.length && S.stage >= 0) {
-    const t0 = (S.status?.started_at || new Date().toISOString()).slice(11, 23);
+    const t0 = S.status?.started_at ? S.status.started_at.slice(11, 23) : new Date().toTimeString().slice(0, 8);
     lines.push({ts: t0, txt: `import: reading ${S.profiles.find(p => p.id === S.profile)?.seed_file || "statement.csv"} (${S.txs.length} rows)`}, {ts: t0, txt: "import: schema check ok: date, description, amount"}, {ts: t0, txt: "db: rows written to SQLite (no LLM)"});
   }
   ev.forEach(e => {
