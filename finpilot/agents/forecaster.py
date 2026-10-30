@@ -150,6 +150,27 @@ def backtest(txs: list[dict], min_train_months: int = 3) -> dict:
             "mae_net": round(statistics.mean(abs(r["predicted_net"] - r["actual_net"]) for r in rows), 2)}
 
 
+def earliest_purchase(txs: list[dict], amount: float, opening_balance: float = 0.0, horizon: int = 24) -> dict:
+    """When can the user make a one-off purchase? Try it in each future month of a long projection.
+
+    affordable = the pessimistic path never drops below the safety buffer; tight = the balance stays >= 0.
+    """
+    fc = project(txs, horizon=horizon, opening_balance=opening_balance)
+    if "error" in fc:
+        return {"error": fc["error"]}
+    found: dict = {"horizon_months": horizon, "affordable": None, "tight": None}
+    for offset in range(1, horizon + 1):
+        sim = simulate(fc, {"type": "purchase", "amount": amount, "month_offset": offset})
+        hit = {"month": fc["path"][offset - 1]["month"], "month_offset": offset,
+               "min_balance": sim["min_balance"], "set_aside_per_month": round(amount / offset, 2)}
+        if found["tight"] is None and sim["verdict"] in ("tight", "affordable"):
+            found["tight"] = hit
+        if sim["verdict"] == "affordable":
+            found["affordable"] = hit
+            break
+    return found
+
+
 def simulate(fc: dict, decision: dict) -> dict:
     """Apply a what-if decision to the baseline trajectory.
 

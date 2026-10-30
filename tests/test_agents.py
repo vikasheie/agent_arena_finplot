@@ -216,3 +216,18 @@ def test_garbled_llm_explanation_is_replaced_by_computed_numbers(labelled_db, mo
     good = f"Yes, the INR 20,000 purchase is fine; lowest balance INR {sim['min_balance']:,.0f}."
     assert coordinator.unsupported_numbers(good, sim) == []
     assert "INR 20,000" in coordinator.simulation_sentence(sim)
+
+
+def test_earliest_purchase_finds_future_month(labelled_db):
+    txs = db.all_transactions()
+    now = forecaster.simulate(forecaster.project(txs, opening_balance=0), {"type": "purchase", "amount": 150000,
+                                                                          "month_offset": 1})
+    assert now["verdict"] != "affordable"
+    e = forecaster.earliest_purchase(txs, 150000, opening_balance=0)
+    assert e["affordable"] and e["affordable"]["month_offset"] > 1
+    later = forecaster.simulate(forecaster.project(txs, horizon=24, opening_balance=0),
+                                {"type": "purchase", "amount": 150000, "month_offset": e["affordable"]["month_offset"]})
+    assert later["verdict"] == "affordable"
+    sim = {**now, "earliest": e}
+    text = coordinator.simulation_sentence(sim)
+    assert "comfortably affordable in" in text and coordinator.unsupported_numbers(text, sim) == []

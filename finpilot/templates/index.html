@@ -666,7 +666,16 @@ function renderPresets() { $("presets").innerHTML = (PRESETS[S.profile] || []).m
 function verdict(v) { return `<span class="verdict ${v}">${v === "affordable" ? "Yes, affordable" : v === "tight" ? "Yes, but tight" : "No, not affordable"}</span>`; }
 function simBlock(sim, text) {
   return `${verdict(sim.verdict)}<p style="margin:10px 0">${text}</p><div class="tiles" style="margin-top:0"><div class="tile"><span>lowest balance</span><b>${inr(sim.min_balance)}</b></div><div class="tile"><span>pessimistic</span><b>${inr(sim.min_balance_pessimistic)}</b></div><div class="tile"><span>safety buffer</span><b>${inr(sim.safety_buffer)}</b></div><div class="tile"><span>shortfall</span><b style="color:${sim.shortfall ? "var(--red)" : "var(--green)"}">${inr(sim.shortfall)}</b></div></div>
+    ${earliestBlock(sim.earliest)}
     ${sim.suggested_cuts.length ? `<div style="margin-top:10px;font-size:13px">To protect your buffer, trim: ${sim.suggested_cuts.map(c => `<b>${esc(c.category)}</b> −${inr(c.cut_per_month)}/mo`).join(" · ")}</div>` : ""}<div class="chart" style="margin-top:10px"></div><div class="legend"><span><i class="ln" style="background:repeating-linear-gradient(90deg,#9a9a9a 0 4px,transparent 4px 7px)"></i>Current path</span><span><i class="ln" style="background:#ff9f43"></i>With this decision</span><span><i class="ln" style="background:#f5c84c"></i>Safety buffer</span></div>`;
+}
+function earliestBlock(e) {
+  if (!e || e.error) return "";
+  const a = e.affordable, t = e.tight;
+  const cell = (label, hit, color) => `<div class="tile"><span>${label}</span><b style="color:${color}">${hit ? monY(hit.month) : "not within " + e.horizon_months + " mo"}</b>${hit ? `<div class="mono muted" style="font-size:11px">set aside ${inr(hit.set_aside_per_month)}/mo · lowest ${inrShort(hit.min_balance)}</div>` : ""}</div>`;
+  return `<div style="margin-top:12px;border:1px solid var(--green-line);background:var(--green-dim);border-radius:12px;padding:12px">
+    <b>When can you buy it?</b> <span class="muted" style="font-size:12.5px">The Forecaster tried the purchase in each of the next ${e.horizon_months} months of your projection.</span>
+    <div class="tiles" style="grid-template-columns:repeat(2,minmax(0,1fr))">${cell("comfortably (stays above buffer)", a, "var(--green)")}${cell("possible but tight (stays above ₹0)", t, "var(--yellow)")}</div></div>`;
 }
 function drawSim(el, sim) { lineChart(el, {height: 220, series: [{name: "Current path", color: "#9a9a9a", dashed: true, points: sim.path.map(p => ({x: p.month, y: p.baseline}))}, {name: "With decision", color: "#ff9f43", points: sim.path.map(p => ({x: p.month, y: p.scenario}))}], refs: [{y: sim.safety_buffer, label: `Buffer ${inrShort(sim.safety_buffer)}`, color: "#f5c84c"}]}); }
 async function ask() {

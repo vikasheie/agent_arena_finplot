@@ -266,12 +266,16 @@ Return JSON: {{"intent": "what_if" | "question",
                    | {{"type": "recurring_change", "monthly_delta": number, "month_offset": int}}
                    | {{"type": "savings_goal", "amount": number, "months": int}}}}
 Use "what_if" for affordability or planned decisions ("can I afford", "what if I buy", "if I cancel X",
-"save 1 lakh by"). month_offset 1 = next month. monthly_delta is positive for a new cost, negative for a cut.
+"save 1 lakh by", "when can I buy X"). For "when can I buy X" use a purchase with month_offset 1; the system
+then searches for the earliest month itself. month_offset 1 = next month. monthly_delta is positive for a new cost, negative for a cut.
 Amounts in INR (1 lakh = 100000, 1k = 1000)."""
 
 EXPLAIN_PROMPT = """You are FinPilot answering the user's money question using ONLY the provided numbers.
 Be direct (start with Yes / No / Tight), quote rupee figures, mention the lowest projected balance and the
 safety buffer, and if relevant name the specific categories to cut from "suggested_cuts".
+If "earliest" is present, also say from which month it becomes comfortably affordable ("affordable") and from
+which month it is possible but tight ("tight"), with the monthly amount to set aside until then; if both are
+null, say it is not reachable within the horizon at the current pace.
 Write amounts as plain ASCII like "INR 20,000" (never the rupee symbol or unicode escapes) and copy every
 number exactly from the input, rounded to whole rupees.
 Respond as JSON {"answer": "..."} (max 120 words)."""
@@ -295,9 +299,10 @@ def ask(question: str) -> dict:
 
     if route.get("intent") == "what_if" and route.get("decision") and "error" not in fc:
         sim = forecaster.simulate(fc, route["decision"])
-        db.log_decision(run_id, "forecaster", "simulate", {k: sim[k] for k in (
+        add_earliest(sim)
+        db.log_decision(run_id, "forecaster", "simulate", {k: sim.get(k) for k in (
             "decision", "verdict", "min_balance", "min_balance_pessimistic", "safety_buffer", "shortfall",
-            "suggested_cuts")})
+            "suggested_cuts", "earliest")})
         expl = llm.chat_json(EXPLAIN_PROMPT, json.dumps({"question": question, "simulation": {
             k: v for k, v in sim.items() if k != "path"}, "path": sim["path"]}), agent="forecaster", run_id=run_id)
         answer, bad = expl.get("answer", ""), []
@@ -331,10 +336,15 @@ def unsupported_numbers(text: str, sim: dict) -> list[str]:
     facts += [abs(float(v)) for v in sim["decision"].values() if isinstance(v, (int, float))]
     facts += [abs(float(p[k])) for p in sim["path"] for k in ("baseline", "scenario", "scenario_low")]
     facts += [abs(float(c[k])) for c in sim.get("suggested_cuts", []) for k in ("cut_per_month", "current_per_month")]
+    for hit in (sim.get("earliest") or {}).values():
+        if isinstance(hit, dict):
+            facts += [abs(float(hit[k])) for k in ("min_balance", "set_aside_per_month")]
     bad = []
     for tok in _NUM.findall(text):
         value = float(tok.replace(",", ""))
         if value < 100:  # small numbers: months, percentages, "26°C" style details
+            continue
+        if "," not in tok and "." not in tok and 2000 <= value <= 2100:  # a year, as in "April 2027"
             continue
         if not any(abs(value - f) <= max(1.0, 0.005 * f) for f in facts):
             bad.append(tok)
@@ -352,10 +362,42 @@ def simulation_sentence(sim: dict) -> str:
         return (f"Yes. With {what}, your lowest projected balance is INR {sim['min_balance']:,.0f} "
                 f"(INR {low:,.0f} in the pessimistic case), above your INR {buf:,.0f} safety buffer.")
     if sim["verdict"] == "tight":
-        return (f"Yes, but it's tight. With {what}, your balance dips to INR {sim['min_balance']:,.0f}, "
+        text = (f"Yes, but it's tight. With {what}, your balance dips to INR {sim['min_balance']:,.0f}, "
                 f"INR {sim['shortfall']:,.0f} below your INR {buf:,.0f} safety buffer.")
-    return (f"No. With {what}, your balance would fall to INR {sim['min_balance']:,.0f}, "
-            f"below zero and short of your INR {buf:,.0f} safety buffer.")
+    else:
+        text = (f"No. With {what}, your balance would fall to INR {sim['min_balance']:,.0f}, "
+                f"below zero and short of your INR {buf:,.0f} safety buffer.")
+    return text + " " + earliest_sentence(sim.get("earliest"))
+
+
+def _month_name(ym: str) -> str:
+    from datetime import date as _d
+    return _d(int(ym[:4]), int(ym[5:7]), 1).strftime("%B %Y")
+
+
+def earliest_sentence(e: dict | None) -> str:
+    if not e or e.get("error"):
+        return ""
+    a, t = e.get("affordable"), e.get("tight")
+    if a:
+        out = (f"It becomes comfortably affordable in {_month_name(a['month'])}: set aside about "
+               f"INR {a['set_aside_per_month']:,.0f} a month until then.")
+        if t and t["month"] != a["month"]:
+            out += f" It is possible but tight from {_month_name(t['month'])}."
+        return out
+    if t:
+        return (f"At the current pace it never clears your safety buffer within {e['horizon_months']} months, "
+                f"but it is possible (tight) from {_month_name(t['month'])}.")
+    return f"At the current pace it is not reachable within {e['horizon_months']} months; cut spending first."
+
+
+def add_earliest(sim: dict) -> None:
+    """For a purchase that isn't comfortably affordable now, find the earliest month it is."""
+    d = sim["decision"]
+    if d.get("type") != "purchase" or sim["verdict"] == "affordable":
+        return
+    opening = float(db.get_setting("opening_balance", "0") or 0)
+    sim["earliest"] = forecaster.earliest_purchase(db.all_transactions(), float(d["amount"]), opening)
 
 
 def build_digest() -> dict:

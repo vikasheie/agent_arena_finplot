@@ -226,7 +226,9 @@ def simulate(d: Decision):
     fc = forecaster.forecast()
     if "error" in fc:
         raise HTTPException(400, fc["error"])
-    return forecaster.simulate(fc, d.model_dump(exclude_none=True))
+    sim = forecaster.simulate(fc, d.model_dump(exclude_none=True))
+    coordinator.add_earliest(sim)
+    return sim
 
 
 @api.get("/trail/{run_id}")
