@@ -265,7 +265,8 @@ def digest_now():
 
 @api.get("/digests")
 def list_digests():
-    return {"next_scheduled": scheduler.next_run(), "enabled": scheduler.digest_enabled(), "digests": db.digests()}
+    return {"next_scheduled": scheduler.next_run(), "enabled": scheduler.digest_enabled(), "digests": db.digests(),
+            "channels": scheduler.channels()}
 
 
 @api.get("/runs")

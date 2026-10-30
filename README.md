@@ -31,16 +31,16 @@ The UI (`/`) follows the official FinPilot demo flow, and every screen shows the
 
 | Capability | Where | How |
 |---|---|---|
-| Ingestion | `finpilot/ingest.py` | CSV upload (a signed `amount` column, or separate `debit`/`credit` columns, with several date formats) or manual entry |
-| Categorisation | `agents/categorizer.py` | Merchant memory, then LLM batches (`gpt-4.1-mini`), then a **self-check loop**: invalid, low-confidence or sign-contradicting labels are re-asked with `gpt-4.1` plus examples from the user's own history. User corrections teach the merchant memory |
+| Ingestion | `finpilot/ingest.py` | CSV upload (a signed `amount` column, or separate `debit`/`credit` / `Withdrawal Amt.`/`Deposit Amt.` columns, several date formats) or manual entry. Re-uploading the same file skips rows already stored, while genuine repeats inside one statement are kept |
+| Categorisation | `agents/categorizer.py` | Merchant memory, then LLM batches (`gpt-4.1-mini`), then a **self-check loop**: invalid, low-confidence or sign-contradicting labels are re-asked with `gpt-4.1` plus examples from the user's own history. User corrections teach the merchant memory. Every label stores **why** (the LLM's reason, a memory hit, a keyword rule, or "corrected by you"). Rows labelled by the offline fallback are re-labelled by the LLM on the next run once Mesh is reachable |
 | Behaviour analysis | `agents/analyzer.py` | Monthly totals by category; recurring-payment detection (monthly or quarterly, ±15% amount); robust-z anomaly detection against the merchant's, the category's or the user's own baseline; rising bills; category trends; top discretionary merchants; payday impulse buying. Each finding gets an evidence id (`P1`, `P2`, ...) |
 | Forecasting | `agents/forecaster.py` | Income + active recurring payments (quarterly bills placed in the month they fall due) + recency-weighted variable spend (one-off anomalies excluded), over 6 months with an ~80% band. **Backtested** month by month on history it hasn't seen |
-| What-if simulation | `forecaster.simulate` | One-off purchase, a new or cancelled recurring cost, or a savings goal, run against the real trajectory. Gives a verdict (`affordable`, `tight`, `not_affordable`), the lowest balance, the shortfall versus a safety buffer (one month of essential spend), and which categories to cut |
-| Advice | `agents/advisor.py` | The advisor (`gpt-4.1`) must cite evidence ids and name specific merchants. The **verifier** rejects advice that cites nothing, cites unknown ids, claims more rupees than the evidence shows, doesn't name the merchant, or is generic. Rejected advice goes back to the advisor with the reasons, for up to 3 rounds |
+| What-if simulation | `forecaster.simulate`, `forecaster.earliest_purchase` | One-off purchase, a new or cancelled recurring cost, or a savings goal, run against the real trajectory. Gives a verdict (`affordable`, `tight`, `not_affordable`), the lowest balance, the shortfall versus a safety buffer (one month of essential spend), and which categories to cut. For a purchase that isn't affordable now it answers **"when can I?"**: it tries the purchase in each of the next 24 projected months and reports the earliest comfortable month, the earliest tight month, and the monthly set-aside |
+| Advice | `agents/advisor.py` | The advisor (`gpt-4.1`) must cite evidence ids and name specific merchants. The **verifier** rejects advice that cites nothing, cites unknown ids, claims more rupees than the evidence shows, doesn't name the merchant, is generic, claims an implausibly small saving, or asks the user to cut **essentials** (medicines, school fees, rent, EMIs, money sent to family). Rejected advice goes back to the advisor with the reasons, for up to 3 rounds |
 | Goal tracking | `forecaster.goal_progress` | Required saving per month vs. projected surplus, giving `on_track` or `behind` (evidence `G1`, ...), which feeds the advisor |
-| Conversational Q&A | `coordinator.ask` | The coordinator classifies a question and sends it to the simulator ("can I afford a ₹40k trip next month?") or the Q&A agent (free-form questions over the user's real data) |
-| Proactive digest | `finpilot/scheduler.py` | An **APScheduler cron job** (default Monday 09:00) re-runs the pipeline and delivers one insight and one action through Telegram (if configured) or in the app |
-| Decision trail | `decision_trail` table, `/api/trail/{run_id}` | Every agent step and every Mesh call (model, tokens, response preview) is stored, and each recommendation stores its `evidence_ids`, `reason` and `verifier_note` |
+| Conversational Q&A | `coordinator.ask` | The coordinator classifies a question and sends it to the simulator ("can I afford a ₹40k trip next month?", "when can I buy a ₹1 lakh laptop?") or the Q&A agent (free-form questions over the user's real data). Every number in an LLM-written explanation must match a figure the simulator computed; otherwise a template sentence built from the real numbers is shown and the rejection is logged |
+| Proactive digest | `finpilot/scheduler.py` | An **APScheduler cron job** (default Monday 09:00, every profile with the digest switched on) re-runs the pipeline and delivers one insight and one action by **Telegram and/or e-mail** when configured, and always in the app. See [Proactive delivery](#proactive-delivery) |
+| Decision trail | `decision_trail` table, `/api/trail/{run_id}` | Every agent step and every Mesh call (model, tokens, latency, response preview) is stored, and each recommendation stores its `evidence_ids`, `reason` and `verifier_note` |
 
 ## How the agents cooperate
 
@@ -75,7 +75,9 @@ START → coordinator ──(uncategorised rows?)──► categorizer ─┐
 2. **The verifier is a real loop, not a formality.** It's rule-based on purpose: a second LLM agreeing with the first proves little, but "you claimed ₹5,000/month while P3 shows ₹299" is a fact. `tests/test_agents.py::test_pipeline_advisor_verifier_loop_iterates` proves the graph loops.
 3. **Anomalies are judged against the merchant's own history.** A ₹2,000 fuel fill-up isn't unusual for "transport" just because cab rides cost ₹300. This raised anomaly precision on the synthetic data from 18% to 100% (see `eval/`).
 4. **One-off anomalies are kept out of the forecast baseline.** Without this, a single ₹35k laptop made the forecast worse than a naive "same as last month" guess.
-5. **Failures are visible, and they don't cascade.** A circuit breaker in `finpilot/llm.py` stops calling Mesh for 60 seconds after a billing or auth error (401, 402 or 403). If Mesh fails (outage, no balance), the categorizer falls back to keyword rules, marked `category_source=fallback`, and the error is written to the decision trail. Nothing pretends the LLM ran.
+5. **Never show a number the code didn't compute.** In testing, the model once wrote the ₹ sign as a broken escape (`\u000a` followed by "9"), turning "₹20,000" into "920,000". Prompts now require plain-ASCII "INR" amounts, and a number check compares every figure in an LLM explanation with the simulator's output before the user sees it.
+6. **Advice protects essentials.** The Verifier rejects any recommendation that cuts medicines, school fees, rent, EMIs or family support, whatever the prompt said. The digest headlines the most specific non-essential action (e.g. the AC timer for a rising electricity bill).
+7. **Failures are visible, and they don't cascade.** A circuit breaker in `finpilot/llm.py` stops calling Mesh for 60 seconds after a billing or auth error (401, 402 or 403). If Mesh fails (outage, no balance), the categorizer falls back to keyword rules, marked `category_source=fallback`, and the error is written to the decision trail. Nothing pretends the LLM ran.
 
 ## Self-evaluation
 
@@ -104,7 +106,7 @@ Honest caveats:
 - Priya spends very steadily, so the naive baseline edges out the model for her. The model wins clearly where it matters: irregular income (Aarav) and lumpy quarterly bills (Sharma).
 - The keyword baseline does well on the persona data only because the same author wrote both the generator and the keywords. That's why the held-out set exists.
 
-`pytest` runs 8 tests with a fake LLM, so the loops are proven without spending credits.
+`pytest` runs 16 tests with a fake LLM, so the loops, the guards and the delivery channels are proven without spending credits.
 
 **Try your own data:** `data/samples/neha_hdfc_may-oct-2026.csv` is a separate 6-month statement in an HDFC-style export layout (`Date, Narration, Withdrawal Amt., Deposit Amt.`, dates dd/mm/yyyy). Pick **My data** and drop it on the upload card. It contains a ₹42,999 Croma purchase and a ₹4,600 Zomato order as anomalies, plus food delivery that rises every month.
 
@@ -116,13 +118,50 @@ pip install -r requirements.txt
 cp .env.example .env              # put your Mesh key (rsk_...) in MESH_API_KEY
 python -m eval.generate_data      # writes the three persona datasets (already committed)
 uvicorn finpilot.main:app --reload
-# open http://127.0.0.1:8000 → pick Priya / Aarav / Sharma family → "▶ Run agents" → watch "Agents & trace"
-# then "Ask & what-if": "Can we afford a ₹1.5 lakh family trip in December?"
+# open http://127.0.0.1:8000 → pick Priya / Aarav / Sharma family → "Run FinPilot" → watch the stages and the Agent log
+# then "Ask a what-if": "Can I buy a laptop for 1 lakh? If not now, when?"
 ```
 
-API (send the `X-Profile` header, one of `priya`, `aarav`, `sharma` or `me`): `POST /api/transactions/upload`, `POST /api/transactions`, `POST /api/run` (starts the run in the background and returns `run_id`), `GET /api/runs/{id}` (live per-agent status and tokens), `GET /api/insights`, `POST /api/recommendations/{id}/toggle`, `POST /api/ask`, `POST /api/simulate`, `POST /api/goals`, `POST /api/digest/toggle`, `GET /api/trail/{run_id}`, `GET /health`. The interactive docs are at `/docs`. Each profile's data lives in `profiles/<id>.db` (gitignored).
+API (send the `X-Profile` header, one of `priya`, `aarav`, `sharma` or `me`): `POST /api/transactions/upload`, `POST /api/transactions`, `POST /api/run` (starts the run in the background and returns `run_id`), `GET /api/runs/{id}` (live per-agent status and tokens), `GET /api/insights`, `POST /api/recommendations/{id}/state` (`accepted` / `active` / `dismissed`), `POST /api/profile/reset`, `POST /api/ask`, `POST /api/simulate`, `POST /api/goals`, `POST /api/digest/toggle`, `POST /api/digest/run-now`, `GET /api/digests` (includes which channels are configured), `GET /api/trail/{run_id}`, `GET /api/eval`, `GET /health`. The interactive docs are at `/docs`. Each profile's data lives in `profiles/<id>.db` (gitignored).
 
-Optional settings in `.env`: `MESH_MODEL_FAST` / `MESH_MODEL_SMART` (defaults `openai/gpt-4.1-mini` / `openai/gpt-4.1`), `DIGEST_CRON_DAY_OF_WEEK`, `DIGEST_CRON_HOUR`, and `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` for Telegram delivery.
+Optional settings in `.env`: `MESH_MODEL_FAST` / `MESH_MODEL_SMART` (defaults `openai/gpt-4.1-mini` / `openai/gpt-4.1`), `DIGEST_CRON_DAY_OF_WEEK`, `DIGEST_CRON_HOUR`, and the delivery settings below.
+
+## Proactive delivery
+
+The weekly digest is produced by a real background scheduler, not a button: `finpilot/scheduler.py` registers an **APScheduler cron job** (`DIGEST_CRON_DAY_OF_WEEK` / `DIGEST_CRON_HOUR`, default Monday 09:00 server time). It runs for every profile whose digest switch is on, re-runs the whole agent pipeline on the latest transactions, and sends one insight plus the single best verified action:
+
+```
+FinPilot weekly digest
+
+Your week: Bescom Electricity rose from ~INR 3,350 to INR 5,250 in 2026-10 (+56.7%)
+One action: Set your AC to 26°C night-mode and switch off unused appliances to save INR 1,900/month
+```
+
+It is delivered through every configured channel. The in-app copy is always kept (Digest stage → "Delivered", and the audit log), and `delivered_via` records what happened, e.g. `telegram+email` or `in_app`. **Send now** in the Digest stage runs the same job immediately.
+
+**Telegram**
+1. In Telegram, message **@BotFather**, send `/newbot`, and copy the bot token.
+2. Send any message to your new bot, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `chat.id`.
+3. Add to `.env`:
+   ```
+   TELEGRAM_BOT_TOKEN=123456:ABC...
+   TELEGRAM_CHAT_ID=987654321
+   ```
+
+**E-mail (any SMTP server)**
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587                # 587 = STARTTLS, 465 = SSL
+SMTP_USER=you@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM=you@gmail.com      # optional, defaults to SMTP_USER
+DIGEST_EMAIL_TO=you@gmail.com
+```
+
+For Gmail, create an **App Password** (Google Account → Security → 2-Step Verification → App passwords); your normal password won't work.
+
+Restart the server after editing `.env`. The Digest stage shows which channels are on. A failed send is logged and never blocks the in-app copy.
 
 ## Stack
 

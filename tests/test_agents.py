@@ -231,3 +231,31 @@ def test_earliest_purchase_finds_future_month(labelled_db):
     sim = {**now, "earliest": e}
     text = coordinator.simulation_sentence(sim)
     assert "comfortably affordable in" in text and coordinator.unsupported_numbers(text, sim) == []
+
+
+def test_digest_delivery_channels(monkeypatch):
+    from finpilot import config, scheduler
+    sent = {}
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout=None): sent["server"] = (host, port)
+        def starttls(self): sent["tls"] = True
+        def login(self, user, pw): sent["login"] = user
+        def send_message(self, msg): sent["to"], sent["body"] = msg["To"], msg.get_content()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    for k, v in {"TELEGRAM_BOT_TOKEN": "", "TELEGRAM_CHAT_ID": "", "SMTP_HOST": "", "SMTP_FROM": "",
+                 "DIGEST_EMAIL_TO": ""}.items():
+        monkeypatch.setattr(config, k, v)
+    assert scheduler.deliver("insight", "action") == "in_app"  # nothing configured: kept in the app only
+
+    monkeypatch.setattr(scheduler.smtplib, "SMTP", FakeSMTP)
+    monkeypatch.setattr(config, "SMTP_HOST", "smtp.example.com")
+    monkeypatch.setattr(config, "SMTP_PORT", 587)
+    monkeypatch.setattr(config, "SMTP_USER", "bot@example.com")
+    monkeypatch.setattr(config, "SMTP_FROM", "bot@example.com")
+    monkeypatch.setattr(config, "DIGEST_EMAIL_TO", "me@example.com")
+    assert scheduler.deliver("Electricity up 57%", "Use the AC night timer") == "email"
+    assert sent["tls"] and sent["to"] == "me@example.com" and "Use the AC night timer" in sent["body"]
+    assert scheduler.channels() == {"telegram": False, "email": True, "in_app": True}

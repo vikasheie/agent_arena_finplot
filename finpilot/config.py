@@ -17,6 +17,13 @@ DIGEST_DAY_OF_WEEK = os.getenv("DIGEST_CRON_DAY_OF_WEEK", "mon")
 DIGEST_HOUR = int(os.getenv("DIGEST_CRON_HOUR", "9"))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+# Optional e-mail delivery for the digest (any SMTP server, e.g. Gmail with an app password)
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))  # 587 = STARTTLS, 465 = SSL
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("SMTP_FROM", "") or SMTP_USER
+DIGEST_EMAIL_TO = os.getenv("DIGEST_EMAIL_TO", "")
 
 CATEGORIES = [
     "income", "rent", "emi", "groceries", "dining", "transport", "utilities",
